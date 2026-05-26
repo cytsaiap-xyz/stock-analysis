@@ -71,3 +71,44 @@ def test_tool_exception_is_fed_back_not_raised():
     assert out == "handled gracefully"
     assert any(e.type == "error" for e in events)
     assert ledger.entries() == []
+
+
+def test_returns_empty_when_max_tool_rounds_exhausted():
+    # LLM always asks for a tool, never gives a final answer -> loop must bail out.
+    always_tool = {"role": "assistant", "content": None,
+                   "tool_calls": [{"id": "c", "name": "get_valuation",
+                                   "arguments": '{"stock_no": "2330"}'}]}
+    llm = _ScriptedLLM([always_tool] * 10)
+    bus, ledger = EventBus(), EvidenceLedger()
+    events = []
+    bus.subscribe(events.append)
+    agent = Agent(name="x", role="x", system_prompt="s", model="m",
+                  tool_names=["get_valuation"], max_tool_rounds=3)
+
+    out = agent.run(task="t", llm=llm, registry=_registry(), bus=bus, ledger=ledger)
+
+    assert out == ""
+    assert len(llm.calls) == 3  # stopped at max_tool_rounds, did not loop forever
+
+
+def test_malformed_tool_arguments_emit_error_and_use_empty_args():
+    reg = ToolRegistry()
+    seen_args = {}
+    reg.register(Tool(name="noargs", description="x",
+                      parameters={"type": "object", "properties": {}},
+                      fn=lambda **kw: seen_args.update(kw) or {"ok": True}))
+    llm = _ScriptedLLM([
+        {"role": "assistant", "content": None,
+         "tool_calls": [{"id": "c1", "name": "noargs", "arguments": "{not json"}]},
+        {"role": "assistant", "content": "done", "tool_calls": []},
+    ])
+    bus, ledger = EventBus(), EvidenceLedger()
+    events = []
+    bus.subscribe(events.append)
+    agent = Agent(name="x", role="x", system_prompt="s", model="m", tool_names=["noargs"])
+
+    out = agent.run(task="t", llm=llm, registry=reg, bus=bus, ledger=ledger)
+
+    assert out == "done"
+    assert seen_args == {}  # malformed JSON -> called with no args
+    assert any(e.type == "error" and "malformed" in e.data.get("error", "") for e in events)

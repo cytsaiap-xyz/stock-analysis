@@ -5,7 +5,7 @@ from typing import Any, Dict, List
 from agentcore.events import Event
 
 
-def _to_openai_tool_calls(calls: List[Dict[str, str]]) -> List[Dict[str, Any]]:
+def _to_openai_tool_calls(calls: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return [
         {"id": c["id"], "type": "function",
          "function": {"name": c["name"], "arguments": c["arguments"]}}
@@ -53,8 +53,11 @@ class Agent:
             for call in calls:
                 try:
                     args = json.loads(call["arguments"] or "{}")
-                except json.JSONDecodeError:
+                except json.JSONDecodeError as exc:
                     args = {}
+                    bus.emit(Event(type="error", agent=self.name,
+                                   data={"tool": call["name"],
+                                         "error": "malformed tool arguments: " + str(exc)}))
                 bus.emit(Event(type="tool_call", agent=self.name,
                                data={"tool": call["name"], "args": args}))
                 try:
