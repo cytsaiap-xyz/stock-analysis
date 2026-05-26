@@ -1,4 +1,7 @@
 from types import SimpleNamespace
+
+import pytest
+
 from agentcore.llm import LLMClient
 
 
@@ -52,8 +55,27 @@ def test_assembles_streamed_tool_call_fragments():
 
 
 def test_passes_tools_and_tool_choice_when_tools_given():
+    tools = [{"type": "function", "function": {"name": "x"}}]
     client = LLMClient(client=_FakeClient([_delta_chunk(content="x")]))
-    client.chat(model="m", messages=[], tools=[{"type": "function"}])
+    client.chat(model="m", messages=[], tools=tools)
     kwargs = client._client.chat.completions.last_kwargs
     assert kwargs["stream"] is True
     assert kwargs["tool_choice"] == "auto"
+    assert kwargs["tools"] == tools
+
+
+def test_raises_when_no_key_and_no_client(monkeypatch):
+    monkeypatch.delenv("NVIDIA_API_KEY", raising=False)
+    with pytest.raises(RuntimeError, match="NVIDIA_API_KEY"):
+        LLMClient()
+
+
+def test_assembles_multiple_tool_calls_ordered_by_index():
+    chunks = [
+        _delta_chunk(tool_calls=[_tc(0, id="c0", name="alpha", arguments="{}")]),
+        _delta_chunk(tool_calls=[_tc(1, id="c1", name="beta", arguments='{"x":1}')]),
+    ]
+    client = LLMClient(client=_FakeClient(chunks))
+    msg = client.chat(model="m", messages=[])
+    assert [tc["name"] for tc in msg["tool_calls"]] == ["alpha", "beta"]
+    assert [tc["id"] for tc in msg["tool_calls"]] == ["c0", "c1"]
