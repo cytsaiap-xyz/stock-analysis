@@ -33,4 +33,6 @@ class ToolRegistry:
         return self._tools[name]
 
     def schemas(self, names: List[str]) -> List[Dict[str, Any]]:
-        return [self._tools[n].to_openai_schema() for n in names]
+        # Route through get() so an unregistered name yields a descriptive error
+        # ("Tool not registered: X") instead of a bare KeyError.
+        return [self.get(n).to_openai_schema() for n in names]

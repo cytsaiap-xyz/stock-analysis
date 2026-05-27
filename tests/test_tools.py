@@ -33,3 +33,10 @@ def test_registry_register_get_and_schemas():
 def test_get_unknown_tool_raises():
     with pytest.raises(KeyError):
         ToolRegistry().get("nope")
+
+
+def test_schemas_unknown_tool_raises_descriptive_error():
+    reg = ToolRegistry()
+    reg.register(_sample_tool())
+    with pytest.raises(KeyError, match="Tool not registered: missing"):
+        reg.schemas(["get_valuation", "missing"])

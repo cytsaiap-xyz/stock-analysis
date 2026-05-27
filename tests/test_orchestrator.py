@@ -32,3 +32,22 @@ def test_orchestrator_runs_analysts_then_chair_with_their_statements():
     phases = [e.data.get("phase") for e in events if e.type == "phase" and "phase" in e.data]
     assert phases == ["RESEARCH", "VERDICT"]
     assert any(e.type == "verdict" for e in events)
+
+
+def test_default_analyst_task_is_domain_neutral():
+    from agentcore.orchestrator import _DEFAULT_ANALYST_TASK
+    # The reusable core must not hardcode a market/domain (e.g. "Taiwan stock").
+    assert "Taiwan" not in _DEFAULT_ANALYST_TASK
+    assert "{stock}" in _DEFAULT_ANALYST_TASK
+
+
+def test_custom_analyst_task_template_is_used():
+    analyst = _StubAgent("a", "BULLISH.")
+    chair = _StubAgent("chair", "RECOMMENDATION: HOLD")
+    orch = Orchestrator(analysts=[analyst], chair=chair,
+                        analyst_task_template="Custom review of {stock} please.")
+    bus, ledger = EventBus(), EvidenceLedger()
+
+    orch.run(stock_no="2330", llm=None, registry=None, bus=bus, ledger=ledger)
+
+    assert analyst.tasks[0]["task"] == "Custom review of 2330 please."

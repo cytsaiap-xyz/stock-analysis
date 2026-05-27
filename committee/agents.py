@@ -19,6 +19,12 @@ _TECHNICAL_PROMPT = (
     "Never invent numbers; if a tool fails, say the data is unavailable."
 )
 
+# Domain-specific analyst task wording, passed into the (domain-neutral) Orchestrator.
+ANALYST_TASK_TEMPLATE = (
+    "Analyze Taiwan stock {stock} from your perspective. Use your tools to get real "
+    "data first, then give your concise opinion and a BULLISH/BEARISH/NEUTRAL lean."
+)
+
 _CHAIR_PROMPT = (
     "You are the Chair of an investment committee. You receive the analysts' "
     "statements and must issue ONE final call. Output exactly: a first line "
