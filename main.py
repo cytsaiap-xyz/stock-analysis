@@ -35,6 +35,11 @@ class TerminalRenderer:
             print("  [ok] {} returned".format(e.data["tool"]))
         elif e.type == "error":
             print("\n  [warn] {} error: {}".format(e.data.get("tool"), e.data.get("error")))
+        elif e.type == "verification":
+            g = e.data.get("grounding", {})
+            tail = "" if g.get("grounded", True) else " [warn] 未支持: {}".format(g.get("unsupported", []))
+            print("\n  [查核] 數據支持 {}/{}{}".format(
+                g.get("supported", 0), g.get("checked", 0), tail))
         elif e.type == "verdict":
             print("\n\n========== VERDICT ==========\n{}".format(e.data["text"]))
 
