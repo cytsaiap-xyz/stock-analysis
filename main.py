@@ -6,7 +6,8 @@ from agentcore.events import Event, EventBus
 from agentcore.evidence import EvidenceLedger
 from agentcore.llm import LLMClient
 from agentcore.orchestrator import Orchestrator
-from committee.agents import ANALYST_TASK_TEMPLATE, build_committee
+from committee.agents import (ANALYST_TASK_TEMPLATE, CHALLENGE_TASK_TEMPLATE,
+                              REBUTTAL_TASK_TEMPLATE, build_committee)
 from committee.config import CACHE_DIR, NVIDIA_BASE_URL
 from committee.data.twse import TwseClient
 from committee.domain_tools import build_registry
@@ -43,9 +44,12 @@ def run(stock_no: str) -> str:
     ledger = EvidenceLedger()
     llm = LLMClient(base_url=NVIDIA_BASE_URL)
     registry = build_registry(TwseClient(cache_dir=CACHE_DIR))
-    analysts, chair = build_committee()
-    orch = Orchestrator(analysts=analysts, chair=chair,
-                        analyst_task_template=ANALYST_TASK_TEMPLATE)
+    committee = build_committee()
+    orch = Orchestrator(research=committee.research, challengers=committee.challengers,
+                        chair=committee.chair,
+                        analyst_task_template=ANALYST_TASK_TEMPLATE,
+                        challenge_task_template=CHALLENGE_TASK_TEMPLATE,
+                        rebuttal_task_template=REBUTTAL_TASK_TEMPLATE)
     return orch.run(stock_no=stock_no, llm=llm, registry=registry, bus=bus, ledger=ledger)
 
 

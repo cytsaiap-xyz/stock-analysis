@@ -1,11 +1,10 @@
-"""台股投資委員會 — Tkinter 桌面介面(步驟方塊流程版)。
+"""台股投資委員會 — Tkinter 桌面介面(7 位委員 + 辯論回合 步驟方塊版)。
 
-委員會引擎完全不變:此 GUI 只是另一個 EventBus 訂閱者。由於一次分析需要約
-30-90 秒的網路/LLM 運算,而 Tkinter 為單執行緒,委員會在背景執行緒執行,
-透過執行緒安全的 queue 推送 Event;Tk 主迴圈以 root.after() 取出事件並更新畫面。
+委員會引擎完全不變:此 GUI 只是另一個 EventBus 訂閱者。委員會在背景執行緒執行,
+透過執行緒安全的 queue 推送 Event;Tk 主迴圈以 root.after() 取出並更新畫面。
 
-左側為「執行流程」步驟方塊:每個方塊顯示該步驟的委員、使用的 LLM 模型、工具,
-以及即時狀態(等待 / 進行中 / 完成)。右側為逐字串流的對話 feed。
+左側為「執行流程」步驟方塊(可捲動):每個方塊顯示委員、使用的 LLM 模型、工具與
+即時狀態。右側為逐字串流的對話 feed。
 
 執行:  python gui.py
 """
@@ -21,7 +20,8 @@ from agentcore.events import Event, EventBus
 from agentcore.evidence import EvidenceLedger
 from agentcore.llm import LLMClient
 from agentcore.orchestrator import Orchestrator
-from committee.agents import ANALYST_TASK_TEMPLATE, build_committee
+from committee.agents import (ANALYST_TASK_TEMPLATE, CHALLENGE_TASK_TEMPLATE,
+                              REBUTTAL_TASK_TEMPLATE, build_committee)
 from committee.config import CACHE_DIR, NVIDIA_BASE_URL
 from committee.data.twse import TwseClient
 from committee.domain_tools import build_registry
@@ -29,16 +29,27 @@ from committee.domain_tools import build_registry
 AGENT_COLORS = {
     "fundamental": "#1f6feb",
     "technical": "#2ea043",
+    "institutional": "#d29922",
+    "news": "#db61a2",
+    "risk": "#cf222e",
+    "skeptic": "#bf3989",
     "chair": "#8957e5",
+    "verifier": "#0a7ea4",
     "system": "#6e7681",
 }
 AGENT_ZH = {
     "fundamental": "基本面分析師",
     "technical": "技術面分析師",
+    "institutional": "籌碼面分析師",
+    "news": "新聞輿情分析師",
+    "risk": "風險經理",
+    "skeptic": "唱反調者",
     "chair": "主席",
+    "verifier": "查核員",
     "system": "系統",
 }
-PHASE_ZH = {"RESEARCH": "研究分析", "VERDICT": "最終結論"}
+PHASE_ZH = {"RESEARCH": "研究分析", "CHALLENGE": "質詢",
+            "REBUTTAL": "答辯", "VERDICT": "最終結論"}
 
 _PENDING = ("⏳ 等待", "#6e7681")
 _RUNNING = ("▶ 進行中", "#1f6feb")
@@ -91,13 +102,14 @@ class CommitteeGUI:
         self._busy = False
         self._cur_agent = None
         self._cur_has_tokens = False
-        self.cards = {}            # step-key -> {"status":Label, "result":Label}
+        self._cur_phase = None
+        self.cards = {}
         self._build_widgets()
         self.root.after(50, self._drain)
 
     # ---- 版面 ----
     def _build_widgets(self) -> None:
-        self.root.title("台股投資委員會 — Agentic AI")
+        self.root.title("台股投資委員會 — Agentic AI (7 位委員)")
         top = tk.Frame(self.root)
         top.pack(fill="x", padx=8, pady=6)
         tk.Label(top, text="股票代號:").pack(side="left")
@@ -110,7 +122,7 @@ class CommitteeGUI:
 
         self.verdict = tk.Label(self.root, text="結論:(請先執行分析)",
                                 font=("Microsoft JhengHei", 12, "bold"), anchor="w",
-                                justify="left", wraplength=760)
+                                justify="left", wraplength=820)
         self.verdict.pack(fill="x", padx=8, pady=(4, 0))
         self.status = tk.Label(self.root, text="● 閒置", anchor="w",
                                fg="#6e7681", font=("Microsoft JhengHei", 9))
@@ -119,14 +131,21 @@ class CommitteeGUI:
         body = tk.Frame(self.root)
         body.pack(fill="both", expand=True, padx=8, pady=6)
 
-        # 左側:執行流程步驟方塊
-        left = tk.Frame(body, width=280)
+        # 左側:可捲動的執行流程步驟方塊
+        left = tk.Frame(body, width=300)
         left.pack(side="left", fill="y", padx=(0, 8))
         left.pack_propagate(False)
         tk.Label(left, text="執行流程 Pipeline", anchor="w",
                  font=("Microsoft JhengHei", 10, "bold")).pack(fill="x")
-        self._pipeline = tk.Frame(left)
-        self._pipeline.pack(fill="both", expand=True)
+        canvas = tk.Canvas(left, width=290, highlightthickness=0)
+        sb = tk.Scrollbar(left, orient="vertical", command=canvas.yview)
+        self._pipeline = tk.Frame(canvas)
+        self._pipeline.bind(
+            "<Configure>", lambda _e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.create_window((0, 0), window=self._pipeline, anchor="nw")
+        canvas.configure(yscrollcommand=sb.set)
+        canvas.pack(side="left", fill="both", expand=True)
+        sb.pack(side="right", fill="y")
         self._build_pipeline()
 
         # 右側:逐字串流對話
@@ -141,59 +160,59 @@ class CommitteeGUI:
             self.feed.tag_config(name, foreground=color)
 
     def _build_pipeline(self) -> None:
-        """依委員會名單建立步驟方塊(委員 + 使用的 LLM 模型 + 工具)。"""
-        analysts, chair = build_committee()
+        c = build_committee()
         steps = [("phase:RESEARCH", "研究分析", "system", None, None)]
-        for a in analysts:
+        for a in c.research:
             steps.append(("agent:" + a.name, _zh(a.name), a.name, a.model, a.tool_names))
+        steps.append(("phase:CHALLENGE", "質詢", "system", None, None))
+        for a in c.challengers:
+            steps.append(("agent:" + a.name, _zh(a.name), a.name, a.model, a.tool_names))
+        steps.append(("phase:REBUTTAL", "答辯(分析師回應)", "system", None, None))
         steps.append(("phase:VERDICT", "最終結論", "system", None, None))
-        steps.append(("agent:" + chair.name, _zh(chair.name), chair.name, chair.model, []))
+        steps.append(("agent:chair", _zh("chair"), "chair", c.chair.model, []))
 
-        for i, (key, title, color_key, model, tools) in enumerate(steps, start=1):
-            self._make_card(i, key, title, color_key, model, tools)
+        for i, (key, title, ck, model, tools) in enumerate(steps, start=1):
+            self._make_card(i, key, title, ck, model, tools)
             if i < len(steps):
                 tk.Label(self._pipeline, text="↓", fg="#b0b0b0").pack()
 
     def _make_card(self, num, key, title, color_key, model, tools) -> None:
         color = AGENT_COLORS.get(color_key, "#333333")
-        card = tk.Frame(self._pipeline, bd=1, relief="solid", padx=6, pady=4)
+        card = tk.Frame(self._pipeline, bd=1, relief="solid", padx=6, pady=3)
         card.pack(fill="x")
         hdr = tk.Frame(card)
         hdr.pack(fill="x")
         tk.Label(hdr, text="{}. {}".format(num, title), fg=color,
-                 font=("Microsoft JhengHei", 10, "bold")).pack(side="left")
+                 font=("Microsoft JhengHei", 9, "bold")).pack(side="left")
         status = tk.Label(hdr, text=_PENDING[0], fg=_PENDING[1],
-                          font=("Microsoft JhengHei", 9))
+                          font=("Microsoft JhengHei", 8))
         status.pack(side="right")
         if model:
-            tk.Label(card, text="模型 LLM: " + model, fg="#444444", anchor="w",
-                     font=("Consolas", 8), wraplength=250, justify="left").pack(fill="x")
+            tk.Label(card, text="模型: " + model, fg="#444444", anchor="w",
+                     font=("Consolas", 7), wraplength=260, justify="left").pack(fill="x")
         if tools:
             tk.Label(card, text="工具: " + ", ".join(tools), fg="#777777", anchor="w",
-                     font=("Microsoft JhengHei", 8), wraplength=250, justify="left").pack(fill="x")
+                     font=("Microsoft JhengHei", 7), wraplength=260, justify="left").pack(fill="x")
         result = tk.Label(card, text="—", fg="#333333", anchor="w",
-                          font=("Microsoft JhengHei", 9), wraplength=250, justify="left")
+                          font=("Microsoft JhengHei", 8), wraplength=260, justify="left")
         result.pack(fill="x")
         self.cards[key] = {"status": status, "result": result}
 
     # ---- 步驟方塊更新 ----
-    def _card(self, key):
-        return self.cards.get(key)
-
     def _card_running(self, key) -> None:
-        c = self._card(key)
+        c = self.cards.get(key)
         if c:
             c["status"].config(text=_RUNNING[0], fg=_RUNNING[1])
 
     def _card_done(self, key, result: str = "") -> None:
-        c = self._card(key)
+        c = self.cards.get(key)
         if c:
             c["status"].config(text=_DLDONE[0], fg=_DLDONE[1])
             if result:
                 c["result"].config(text=result)
 
     def _card_result(self, key, text: str) -> None:
-        c = self._card(key)
+        c = self.cards.get(key)
         if c and text:
             c["result"].config(text=text)
 
@@ -210,6 +229,7 @@ class CommitteeGUI:
         self._busy = True
         self._cur_agent = None
         self._cur_has_tokens = False
+        self._cur_phase = None
         self.btn.config(state="disabled", text="分析中...")
         self.verdict.config(text="結論:分析 {} 中...".format(stock))
         self._set_status("開始分析 {} ...".format(stock))
@@ -224,9 +244,12 @@ class CommitteeGUI:
             bus.subscribe(self.queue.put)
             llm = LLMClient(base_url=NVIDIA_BASE_URL)
             registry = build_registry(TwseClient(cache_dir=CACHE_DIR))
-            analysts, chair = build_committee()
-            orch = Orchestrator(analysts=analysts, chair=chair,
-                                analyst_task_template=ANALYST_TASK_TEMPLATE)
+            committee = build_committee()
+            orch = Orchestrator(research=committee.research,
+                                challengers=committee.challengers, chair=committee.chair,
+                                analyst_task_template=ANALYST_TASK_TEMPLATE,
+                                challenge_task_template=CHALLENGE_TASK_TEMPLATE,
+                                rebuttal_task_template=REBUTTAL_TASK_TEMPLATE)
             orch.run(stock_no=stock, llm=llm, registry=registry,
                      bus=bus, ledger=EvidenceLedger())
         except Exception as exc:
@@ -248,7 +271,8 @@ class CommitteeGUI:
         et = e.type
         if et == _DONE:
             self._end_stream()
-            self._card_done("phase:VERDICT")
+            if self._cur_phase:
+                self._card_done("phase:" + self._cur_phase)
             self._busy = False
             self.btn.config(state="normal", text="開始分析")
             self._set_status("● 閒置 — 已完成")
@@ -260,16 +284,15 @@ class CommitteeGUI:
             self._set_status("結論完成 ✓")
             return
         if et == "phase":
-            if e.data.get("phase"):
+            ph = e.data.get("phase")
+            if ph:
                 self._end_stream()
                 self._append(*format_event(e))
-                ph = e.data["phase"]
                 self._set_status("● {} — {}".format(PHASE_ZH.get(ph, ph), e.data.get("stock", "")))
-                if ph == "RESEARCH":
-                    self._card_running("phase:RESEARCH")
-                elif ph == "VERDICT":
-                    self._card_done("phase:RESEARCH")
-                    self._card_running("phase:VERDICT")
+                if self._cur_phase and self._cur_phase != ph:
+                    self._card_done("phase:" + self._cur_phase)
+                self._card_running("phase:" + ph)
+                self._cur_phase = ph
             elif e.data.get("status") == "start":
                 self._set_status("{}:思考中 ...".format(_zh(e.agent)))
                 self._card_running("agent:" + e.agent)
@@ -344,7 +367,7 @@ class CommitteeGUI:
 def main() -> None:
     load_dotenv()
     root = tk.Tk()
-    root.geometry("960x720")
+    root.geometry("1040x760")
     CommitteeGUI(root)
     root.mainloop()
 
