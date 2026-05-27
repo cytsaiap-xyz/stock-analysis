@@ -4,6 +4,7 @@ from datetime import date
 from typing import Any, Dict, List, Optional
 
 _BASE = "https://www.twse.com.tw"
+_OPENAPI = "https://openapi.twse.com.tw/v1"
 _HEADERS = {"User-Agent": "Mozilla/5.0 (committee-mvp)"}
 
 
@@ -23,6 +24,16 @@ def to_float(raw: str) -> Optional[float]:
         return None
 
 
+def to_int(raw: str) -> Optional[int]:
+    raw = (raw or "").replace(",", "").strip()
+    if raw in ("", "--", "null", "None"):
+        return None
+    try:
+        return int(float(raw))
+    except ValueError:
+        return None
+
+
 class TwseClient:
     def __init__(self, cache_dir: str = "cache", session: Any = None,
                  today: Optional[date] = None) -> None:
@@ -35,18 +46,20 @@ class TwseClient:
             self._session = requests.Session()
         os.makedirs(self._cache_dir, exist_ok=True)
 
-    def _get_json(self, endpoint: str, params: Dict[str, str], cache_key: str) -> Dict[str, Any]:
+    def _fetch(self, url: str, params: Dict[str, str], cache_key: str) -> Any:
         path = os.path.join(self._cache_dir, cache_key + ".json")
         if os.path.exists(path):
             with open(path, "r", encoding="utf-8") as fh:
                 return json.load(fh)
-        url = _BASE + "/exchangeReport/" + endpoint
         resp = self._session.get(url, params=params, headers=_HEADERS, timeout=20)
         resp.raise_for_status()
         body = resp.json()
         with open(path, "w", encoding="utf-8") as fh:
             json.dump(body, fh, ensure_ascii=False)
         return body
+
+    def _get_json(self, endpoint: str, params: Dict[str, str], cache_key: str) -> Dict[str, Any]:
+        return self._fetch(_BASE + "/exchangeReport/" + endpoint, params, cache_key)
 
     def valuation(self, stock_no: str) -> Dict[str, Any]:
         key = "bwibbu_all_" + self._today.strftime("%Y%m%d")
@@ -76,6 +89,43 @@ class TwseClient:
                 })
         rows.sort(key=lambda r: r["date"])
         return rows
+
+    def institutional_flows(self, stock_no: str, max_lookback: int = 7) -> Dict[str, Any]:
+        """三大法人買賣超 (T86). Returns the latest trading day's net share figures."""
+        from datetime import timedelta
+        for delta in range(max_lookback):
+            ymd = (self._today - timedelta(days=delta)).strftime("%Y%m%d")
+            body = self._fetch(_BASE + "/fund/T86",
+                               {"response": "json", "date": ymd, "selectType": "ALLBUT0999"},
+                               "t86_" + ymd)
+            if body.get("stat") != "OK" or not body.get("data"):
+                continue
+            for row in body["data"]:
+                if row and row[0] == stock_no and len(row) >= 19:
+                    return {"stock_no": stock_no, "name": row[1],
+                            "foreign_net": to_int(row[4]),
+                            "trust_net": to_int(row[10]),
+                            "dealer_net": to_int(row[11]),
+                            "total_net": to_int(row[18]),
+                            "date": body.get("date")}
+            raise ValueError("No T86 row for stock " + stock_no)
+        raise ValueError("No T86 trading data in the last {} days".format(max_lookback))
+
+    def monthly_revenue(self, stock_no: str) -> Dict[str, Any]:
+        """上市公司月營收 (openapi t187ap05_P). Graceful fallback when the stock
+        is not in the latest filing batch (coverage is not guaranteed per stock)."""
+        body = self._fetch(_OPENAPI + "/opendata/t187ap05_P", {},
+                           "monthly_revenue_" + self._today.strftime("%Y%m"))
+        for item in body or []:
+            if item.get("公司代號") == stock_no:
+                return {"stock_no": stock_no, "available": True,
+                        "name": item.get("公司名稱"),
+                        "period": item.get("資料年月"),
+                        "revenue": item.get("營業收入-當月營收"),
+                        "yoy_pct": item.get("營業收入-去年同月增減(%)"),
+                        "mom_pct": item.get("營業收入-上月比較增減(%)")}
+        return {"stock_no": stock_no, "available": False,
+                "note": "月營收資料暫無(該股未出現在最新批次)"}
 
     def _recent_months(self, months: int) -> List[str]:
         out: List[str] = []

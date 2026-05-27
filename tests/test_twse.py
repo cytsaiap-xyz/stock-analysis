@@ -1,3 +1,5 @@
+from datetime import date
+
 from committee.data.twse import TwseClient, roc_to_iso, to_float
 
 
@@ -70,3 +72,38 @@ def test_disk_cache_avoids_second_network_call(tmp_path):
     client.valuation("2330")
     # BWIBBU_ALL is one snapshot for the day -> only one network call.
     assert len(session.requested) == 1
+
+
+def test_institutional_flows_parses_t86_net_columns(tmp_path):
+    # 19 columns; indices 4=foreign, 10=trust, 11=dealer, 18=total (net shares).
+    row = ["2330", "台積電", "x", "x", "12,000", "x", "x", "x", "x", "x",
+           "3,000", "-1,500", "x", "x", "x", "x", "x", "x", "13,500"]
+    payload = {"stat": "OK", "date": "20260504", "data": [row]}
+    session = _FakeSession({"T86": payload})
+    client = TwseClient(cache_dir=str(tmp_path), session=session, today=date(2026, 5, 4))
+
+    out = client.institutional_flows("2330")
+    assert out == {"stock_no": "2330", "name": "台積電", "foreign_net": 12000,
+                   "trust_net": 3000, "dealer_net": -1500, "total_net": 13500,
+                   "date": "20260504"}
+
+
+def test_monthly_revenue_found(tmp_path):
+    payload = [{"公司代號": "2330", "公司名稱": "台積電", "資料年月": "11504",
+                "營業收入-當月營收": "257219",
+                "營業收入-去年同月增減(%)": "39.0",
+                "營業收入-上月比較增減(%)": "5.0"}]
+    session = _FakeSession({"t187ap05_P": payload})
+    client = TwseClient(cache_dir=str(tmp_path), session=session, today=date(2026, 5, 27))
+
+    out = client.monthly_revenue("2330")
+    assert out["available"] is True
+    assert out["revenue"] == "257219" and out["yoy_pct"] == "39.0"
+
+
+def test_monthly_revenue_missing_is_graceful(tmp_path):
+    session = _FakeSession({"t187ap05_P": [{"公司代號": "9999"}]})
+    client = TwseClient(cache_dir=str(tmp_path), session=session, today=date(2026, 5, 27))
+
+    out = client.monthly_revenue("2330")
+    assert out["available"] is False and "暫無" in out["note"]
