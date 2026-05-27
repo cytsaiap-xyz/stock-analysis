@@ -4,7 +4,8 @@ from gui import format_event
 
 def test_message_renders_with_agent_tag():
     out = format_event(Event(type="message", agent="fundamental", data={"text": "hi"}))
-    assert out == ("[fundamental] hi\n", "fundamental")
+    # Display name is localized to Chinese; the colour tag stays the english key.
+    assert out == ("[基本面分析師] hi\n", "fundamental")
 
 
 def test_tool_call_renders_with_agent_tag():
@@ -19,7 +20,7 @@ def test_phase_with_label_renders_as_system():
     out = format_event(Event(type="phase", agent="system",
                              data={"phase": "RESEARCH", "stock": "2330"}))
     text, tag = out
-    assert "RESEARCH" in text and tag == "system"
+    assert "研究分析" in text and tag == "system"
 
 
 def test_phase_without_label_is_ignored():

@@ -50,6 +50,11 @@ def run(stock_no: str) -> str:
 
 
 if __name__ == "__main__":
+    # Windows consoles default to cp950; force UTF-8 so Chinese output isn't mangled.
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
     load_dotenv()
     stock = sys.argv[1] if len(sys.argv) > 1 else "2330"
     run(stock)

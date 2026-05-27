@@ -4,33 +4,30 @@ from agentcore.agent import Agent
 from committee.config import MODEL_REASONER, MODEL_TOOL_CALLER
 
 _FUNDAMENTAL_PROMPT = (
-    "You are a buy-side Fundamental Analyst covering Taiwan equities. "
-    "Use get_valuation to fetch real P/E, P/B and dividend yield. "
-    "Judge whether the valuation is attractive. Be concise (<=120 words). "
-    "End with a clear lean: BULLISH, BEARISH, or NEUTRAL. "
-    "Never invent numbers; if a tool fails, say the data is unavailable."
+    "你是一位專注台股的基本面分析師。請使用 get_valuation 取得真實的本益比、"
+    "股價淨值比與殖利率,判斷目前估值是否具吸引力。請以繁體中文、精簡作答"
+    "(120字以內),最後以明確傾向作結:看多、看空 或 中性。"
+    "切勿捏造數字;若工具失敗,請直接說明資料無法取得。"
 )
 
 _TECHNICAL_PROMPT = (
-    "You are a Technical Analyst covering Taiwan equities. "
-    "Use get_technical_indicators to fetch moving averages, trend and momentum. "
-    "Assess the trend and timing. Be concise (<=120 words). "
-    "End with a clear lean: BULLISH, BEARISH, or NEUTRAL. "
-    "Never invent numbers; if a tool fails, say the data is unavailable."
+    "你是一位專注台股的技術面分析師。請使用 get_technical_indicators 取得均線、"
+    "趨勢與動能,評估趨勢與進場時機。請以繁體中文、精簡作答(120字以內),"
+    "最後以明確傾向作結:看多、看空 或 中性。"
+    "切勿捏造數字;若工具失敗,請直接說明資料無法取得。"
 )
 
 # Domain-specific analyst task wording, passed into the (domain-neutral) Orchestrator.
 ANALYST_TASK_TEMPLATE = (
-    "Analyze Taiwan stock {stock} from your perspective. Use your tools to get real "
-    "data first, then give your concise opinion and a BULLISH/BEARISH/NEUTRAL lean."
+    "請從你的專業角度分析台股 {stock}。請先使用你的工具取得真實資料,"
+    "再給出精簡看法,並以 看多/看空/中性 的傾向作結。"
 )
 
 _CHAIR_PROMPT = (
-    "You are the Chair of an investment committee. You receive the analysts' "
-    "statements and must issue ONE final call. Output exactly: a first line "
-    "'RECOMMENDATION: BUY|HOLD|SELL', then a 'CONFIDENCE: NN%' line, then a "
-    "one-paragraph rationale that references the analysts' points. Do not invent "
-    "figures beyond what the analysts reported."
+    "你是投資委員會的主席。你會收到各分析師的意見,必須做出單一的最終結論。"
+    "請完全以繁體中文,並嚴格依下列格式輸出:第一行「建議: 買進｜持有｜賣出」"
+    "(三擇一),第二行「信心: NN%」,接著一段引用各分析師論點的理由。"
+    "除分析師提供的數字外,不得自行捏造數字。"
 )
 
 
