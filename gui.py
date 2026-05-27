@@ -6,6 +6,9 @@ the committee runs on a background thread that pushes Events onto a thread-safe
 queue; the Tk main loop drains that queue via root.after() and updates widgets
 (widgets are only ever touched from the main thread).
 
+The feed streams each agent's text token-by-token; a status bar names the current
+step as it happens (thinking / calling a tool / writing / done).
+
 Run:  python gui.py
 """
 import queue
@@ -37,10 +40,11 @@ _DONE = "_run_done"
 
 
 def format_event(e: Event) -> Optional[Tuple[str, str]]:
-    """Map an Event to (display_text, tag) for the feed, or None to ignore.
+    """Map a non-streaming Event to (display_text, tag) for the feed, or None.
 
-    Tokens are ignored (the GUI shows completed `message` events, not token-by-token)
-    and `verdict` is handled separately (it updates the banner, not the feed).
+    Tokens are streamed by the GUI directly (handled statefully, not here).
+    `verdict` updates the banner, not the feed, so it returns None here.
+    `message` is the fallback line used only when an agent streamed no tokens.
     """
     if e.type == "phase" and e.data.get("phase"):
         return ("\n=== {} ({}) ===\n".format(e.data["phase"], e.data.get("stock", "")), "system")
@@ -60,6 +64,8 @@ class CommitteeGUI:
         self.root = root
         self.queue: "queue.Queue" = queue.Queue()
         self._busy = False
+        self._cur_agent = None          # agent whose tokens are currently streaming
+        self._cur_has_tokens = False    # did this agent stream any token text?
         self._build_widgets()
         self.root.after(50, self._drain)
 
@@ -77,8 +83,13 @@ class CommitteeGUI:
 
         self.verdict = tk.Label(self.root, text="Verdict: (run an analysis)",
                                 font=("Segoe UI", 12, "bold"), anchor="w",
-                                justify="left", wraplength=660)
-        self.verdict.pack(fill="x", padx=8, pady=4)
+                                justify="left", wraplength=720)
+        self.verdict.pack(fill="x", padx=8, pady=(4, 0))
+
+        # Live status bar: names the current step as it happens.
+        self.status = tk.Label(self.root, text="● Idle", anchor="w",
+                               fg="#6e7681", font=("Segoe UI", 9))
+        self.status.pack(fill="x", padx=8, pady=(0, 4))
 
         self.feed = scrolledtext.ScrolledText(self.root, width=92, height=30,
                                               wrap="word", state="disabled",
@@ -93,8 +104,11 @@ class CommitteeGUI:
             return
         stock = self.ticker.get().strip() or "2330"
         self._busy = True
+        self._cur_agent = None
+        self._cur_has_tokens = False
         self.btn.config(state="disabled", text="Analyzing...")
         self.verdict.config(text="Verdict: analyzing {} ...".format(stock))
+        self._set_status("starting {} ...".format(stock))
         self._clear_feed()
         threading.Thread(target=self._run_worker, args=(stock,), daemon=True).start()
 
@@ -126,18 +140,78 @@ class CommitteeGUI:
         self.root.after(50, self._drain)
 
     def _handle(self, e: Event) -> None:
-        if e.type == _DONE:
+        et = e.type
+        if et == _DONE:
+            self._end_stream()
             self._busy = False
             self.btn.config(state="normal", text="Analyze")
+            self._set_status("● Idle — done")
             return
-        if e.type == "verdict":
+        if et == "verdict":
             headline = (e.data.get("text") or "").strip().splitlines()
-            self.verdict.config(text="Verdict: " + (" | ".join(headline[:2]) if headline else "(none)"))
+            self.verdict.config(text="Verdict: "
+                                + (" | ".join(headline[:2]) if headline else "(none)"))
+            self._set_status("verdict ready ✓")
             return
-        formatted = format_event(e)
-        if formatted:
-            text, tag = formatted
-            self._append(text, tag)
+        if et == "phase":
+            if e.data.get("phase"):                     # orchestrator phase header
+                self._end_stream()
+                self._append(*format_event(e))
+                self._set_status("● {} — {}".format(
+                    e.data["phase"], e.data.get("stock", "")))
+            elif e.data.get("status") == "start":       # an agent began its turn
+                self._set_status("{}: thinking ...".format(e.agent))
+            return
+        if et == "token":
+            self._stream_token(e.agent, e.data.get("text", ""))
+            self._set_status("{}: writing ...".format(e.agent))
+            return
+        if et == "message":
+            self._finish_message(e)
+            self._set_status("{}: done".format(e.agent))
+            return
+        if et in ("tool_call", "tool_result", "error"):
+            self._end_stream()
+            formatted = format_event(e)
+            if formatted:
+                self._append(*formatted)
+            if et == "tool_call":
+                self._set_status("{}: calling {} ...".format(e.agent, e.data.get("tool")))
+            elif et == "tool_result":
+                self._set_status("{}: received {}".format(e.agent, e.data.get("tool")))
+            else:
+                self._set_status("⚠ {}: {}".format(e.data.get("tool"), e.data.get("error")))
+
+    # ---- token streaming helpers ----
+    def _stream_token(self, agent: str, text: str) -> None:
+        if self._cur_agent != agent:
+            self._end_stream()
+            self._append("[{}] ".format(agent), agent)
+            self._cur_agent = agent
+            self._cur_has_tokens = False
+        if text:
+            self._append(text, agent)
+            self._cur_has_tokens = True
+
+    def _finish_message(self, e: Event) -> None:
+        if self._cur_agent == e.agent and self._cur_has_tokens:
+            self._append("\n", e.agent)          # tokens already shown; just end the line
+        else:
+            formatted = format_event(e)          # agent streamed nothing; show full text
+            if formatted:
+                self._append(*formatted)
+        self._cur_agent = None
+        self._cur_has_tokens = False
+
+    def _end_stream(self) -> None:
+        if self._cur_agent is not None:
+            self._append("\n", self._cur_agent)
+            self._cur_agent = None
+            self._cur_has_tokens = False
+
+    # ---- widget helpers (GUI thread only) ----
+    def _set_status(self, text: str) -> None:
+        self.status.config(text=text)
 
     def _append(self, text: str, tag: str) -> None:
         self.feed.config(state="normal")
@@ -154,7 +228,7 @@ class CommitteeGUI:
 def main() -> None:
     load_dotenv()
     root = tk.Tk()
-    root.geometry("760x680")
+    root.geometry("780x700")
     CommitteeGUI(root)
     root.mainloop()
 
