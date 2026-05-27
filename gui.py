@@ -21,7 +21,8 @@ from agentcore.evidence import EvidenceLedger
 from agentcore.llm import LLMClient
 from agentcore.orchestrator import Orchestrator
 from committee.agents import (ANALYST_TASK_TEMPLATE, CHALLENGE_TASK_TEMPLATE,
-                              REBUTTAL_TASK_TEMPLATE, build_committee)
+                              CORRECTION_TASK_TEMPLATE, REBUTTAL_TASK_TEMPLATE,
+                              VERIFY_TASK_TEMPLATE, build_committee)
 from committee.config import CACHE_DIR, NVIDIA_BASE_URL
 from committee.data.twse import TwseClient
 from committee.domain_tools import build_registry
@@ -170,6 +171,8 @@ class CommitteeGUI:
         steps.append(("phase:REBUTTAL", "答辯(分析師回應)", "system", None, None))
         steps.append(("phase:VERDICT", "最終結論", "system", None, None))
         steps.append(("agent:chair", _zh("chair"), "chair", c.chair.model, []))
+        steps.append(("phase:VERIFY", "自我查核", "system", None, None))
+        steps.append(("agent:verifier", _zh("verifier"), "verifier", c.verifier.model, []))
 
         for i, (key, title, ck, model, tools) in enumerate(steps, start=1):
             self._make_card(i, key, title, ck, model, tools)
@@ -247,9 +250,12 @@ class CommitteeGUI:
             committee = build_committee()
             orch = Orchestrator(research=committee.research,
                                 challengers=committee.challengers, chair=committee.chair,
+                                verifier=committee.verifier,
                                 analyst_task_template=ANALYST_TASK_TEMPLATE,
                                 challenge_task_template=CHALLENGE_TASK_TEMPLATE,
-                                rebuttal_task_template=REBUTTAL_TASK_TEMPLATE)
+                                rebuttal_task_template=REBUTTAL_TASK_TEMPLATE,
+                                verify_task_template=VERIFY_TASK_TEMPLATE,
+                                correction_task_template=CORRECTION_TASK_TEMPLATE)
             orch.run(stock_no=stock, llm=llm, registry=registry,
                      bus=bus, ledger=EvidenceLedger())
         except Exception as exc:
@@ -283,6 +289,14 @@ class CommitteeGUI:
             self._card_done("agent:chair", head)
             self._set_status("結論完成 ✓")
             return
+        if et == "verification":
+            g = e.data.get("grounding", {})
+            txt = "數據支持 {}/{}".format(g.get("supported", 0), g.get("checked", 0))
+            if not g.get("grounded", True):
+                txt += " ⚠ 未支持: " + ", ".join(str(x) for x in g.get("unsupported", []))
+            self._card_done("phase:VERIFY", txt)
+            self._set_status("查核:" + txt)
+            return
         if et == "phase":
             ph = e.data.get("phase")
             if ph:
@@ -305,7 +319,13 @@ class CommitteeGUI:
             self._finish_message(e)
             self._set_status("{}:完成".format(_zh(e.agent)))
             txt = e.data.get("text", "")
-            result = verdict_headline(txt) if e.agent == "chair" else detect_lean(txt)
+            if e.agent == "chair":
+                result = verdict_headline(txt)
+            elif e.agent == "verifier":
+                lines = txt.strip().splitlines()
+                result = (lines[0][:24] if lines else "完成")
+            else:
+                result = detect_lean(txt)
             self._card_done("agent:" + e.agent, result)
             return
         if et in ("tool_call", "tool_result", "error"):

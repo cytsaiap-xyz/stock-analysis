@@ -83,3 +83,40 @@ def test_custom_analyst_task_template_is_used():
     orch.run(stock_no="2330", llm=None, registry=None, bus=bus, ledger=ledger)
 
     assert analyst.tasks[0]["task"] == "Custom review of 2330 please."
+
+
+def test_verify_phase_runs_when_verifier_present_and_verdict_grounded():
+    fund = _StubAgent("fundamental", "看多")
+    chair = _StubAgent("chair", "建議: 持有\n本益比 30.52 偏高")
+    verifier = _StubAgent("verifier", "查核通過")
+    orch = _orch([fund], [], chair, verifier=verifier)
+    bus, ledger = EventBus(), EvidenceLedger()
+    ledger.record("get_valuation", {}, {"pe": 30.52})  # evidence supports 30.52
+    events = []
+    bus.subscribe(events.append)
+
+    orch.run(stock_no="2330", llm=None, registry=None, bus=bus, ledger=ledger)
+
+    phases = [e.data.get("phase") for e in events if e.type == "phase" and "phase" in e.data]
+    assert phases[-1] == "VERIFY"
+    verifs = [e for e in events if e.type == "verification"]
+    assert len(verifs) == 1 and verifs[0].data["grounding"]["grounded"] is True
+    assert len(verifier.tasks) == 1            # ran once; no correction needed
+    assert len(chair.tasks) == 1
+
+
+def test_verify_triggers_one_correction_when_ungrounded():
+    fund = _StubAgent("fundamental", "看多")
+    chair = _StubAgent("chair", "建議: 買進\n目標價 1180.00")  # 1180.00 unsupported
+    verifier = _StubAgent("verifier", "發現未獲支持的數字")
+    orch = _orch([fund], [], chair, verifier=verifier)
+    bus, ledger = EventBus(), EvidenceLedger()
+    ledger.record("get_valuation", {}, {"pe": 30.52})
+    events = []
+    bus.subscribe(events.append)
+
+    orch.run(stock_no="2330", llm=None, registry=None, bus=bus, ledger=ledger)
+
+    assert len(chair.tasks) == 2               # verdict + one correction round
+    verifs = [e for e in events if e.type == "verification"]
+    assert len(verifs) == 2 and verifs[-1].data.get("final") is True

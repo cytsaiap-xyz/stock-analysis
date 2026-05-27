@@ -7,7 +7,8 @@ from agentcore.evidence import EvidenceLedger
 from agentcore.llm import LLMClient
 from agentcore.orchestrator import Orchestrator
 from committee.agents import (ANALYST_TASK_TEMPLATE, CHALLENGE_TASK_TEMPLATE,
-                              REBUTTAL_TASK_TEMPLATE, build_committee)
+                              CORRECTION_TASK_TEMPLATE, REBUTTAL_TASK_TEMPLATE,
+                              VERIFY_TASK_TEMPLATE, build_committee)
 from committee.config import CACHE_DIR, NVIDIA_BASE_URL
 from committee.data.twse import TwseClient
 from committee.domain_tools import build_registry
@@ -46,10 +47,12 @@ def run(stock_no: str) -> str:
     registry = build_registry(TwseClient(cache_dir=CACHE_DIR))
     committee = build_committee()
     orch = Orchestrator(research=committee.research, challengers=committee.challengers,
-                        chair=committee.chair,
+                        chair=committee.chair, verifier=committee.verifier,
                         analyst_task_template=ANALYST_TASK_TEMPLATE,
                         challenge_task_template=CHALLENGE_TASK_TEMPLATE,
-                        rebuttal_task_template=REBUTTAL_TASK_TEMPLATE)
+                        rebuttal_task_template=REBUTTAL_TASK_TEMPLATE,
+                        verify_task_template=VERIFY_TASK_TEMPLATE,
+                        correction_task_template=CORRECTION_TASK_TEMPLATE)
     return orch.run(stock_no=stock_no, llm=llm, registry=registry, bus=bus, ledger=ledger)
 
 
