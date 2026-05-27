@@ -10,6 +10,13 @@ class _FakeTwse:
         return [{"date": "2026-05-0{}".format(i + 1), "open": 10 + i, "high": 10 + i,
                  "low": 10 + i, "close": 10 + i, "volume": 1000} for i in range(5)]
 
+    def institutional_flows(self, stock_no):
+        return {"stock_no": stock_no, "foreign_net": 12000, "trust_net": 3000,
+                "dealer_net": -1500, "total_net": 13500}
+
+    def monthly_revenue(self, stock_no):
+        return {"stock_no": stock_no, "available": True, "yoy_pct": "39.0"}
+
 
 def test_registry_exposes_mvp_tools():
     reg = build_registry(_FakeTwse())
@@ -42,3 +49,23 @@ def test_get_technical_indicators_coerces_string_months():
     reg = build_registry(_IntMonthsTwse())
     out = reg.get("get_technical_indicators").fn(stock_no="2330", months="3")
     assert "trend" in out
+
+
+def test_registry_exposes_all_phase2_tools():
+    reg = build_registry(_FakeTwse())
+    names = {"get_valuation", "get_technical_indicators", "get_institutional_flows",
+             "get_monthly_revenue", "get_risk_metrics", "search_news"}
+    got = {s["function"]["name"] for s in reg.schemas(list(names))}
+    assert got == names
+
+
+def test_institutional_and_revenue_tools_run():
+    reg = build_registry(_FakeTwse())
+    assert reg.get("get_institutional_flows").fn(stock_no="2330")["foreign_net"] == 12000
+    assert reg.get("get_monthly_revenue").fn(stock_no="2330")["yoy_pct"] == "39.0"
+
+
+def test_risk_metrics_tool_runs_and_coerces_months():
+    reg = build_registry(_FakeTwse())
+    out = reg.get("get_risk_metrics").fn(stock_no="2330", months="3")
+    assert "volatility_annual_pct" in out and "max_drawdown_pct" in out
