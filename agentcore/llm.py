@@ -1,5 +1,14 @@
 import os
+import time
 from typing import Any, Callable, Dict, List, Optional
+
+
+def _is_transient(exc: Exception) -> bool:
+    """True for errors worth retrying: HTTP 429 / 5xx, timeouts, connection drops."""
+    status = getattr(exc, "status_code", None)
+    if status is not None and (status == 429 or status >= 500):
+        return True
+    return type(exc).__name__ in ("APITimeoutError", "APIConnectionError")
 
 
 class LLMClient:
@@ -35,6 +44,8 @@ class LLMClient:
         on_token: Optional[Callable[[str], None]] = None,
         temperature: float = 0.6,
         max_tokens: int = 1024,
+        max_retries: int = 3,
+        backoff: float = 1.0,
     ) -> Dict[str, Any]:
         kwargs: Dict[str, Any] = dict(
             model=model,
@@ -47,7 +58,18 @@ class LLMClient:
             kwargs["tools"] = tools
             kwargs["tool_choice"] = "auto"
 
-        stream = self._client.chat.completions.create(**kwargs)
+        # Retry transient errors (429 / 5xx / timeouts) with exponential backoff.
+        # The NVIDIA free tier returns 504s under load; one shouldn't kill a run.
+        attempt = 0
+        while True:
+            try:
+                stream = self._client.chat.completions.create(**kwargs)
+                break
+            except Exception as exc:
+                if attempt >= max_retries or not _is_transient(exc):
+                    raise
+                time.sleep(backoff * (2 ** attempt))
+                attempt += 1
         content_parts: List[str] = []
         acc: Dict[int, Dict[str, str]] = {}
 

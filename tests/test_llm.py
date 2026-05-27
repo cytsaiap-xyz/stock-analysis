@@ -70,6 +70,50 @@ def test_raises_when_no_key_and_no_client(monkeypatch):
         LLMClient()
 
 
+class _FlakyCompletions:
+    def __init__(self, chunks, fail_times, status_code=503):
+        self._chunks = chunks
+        self._fail_times = fail_times
+        self._status = status_code
+        self.calls = 0
+
+    def create(self, **kwargs):
+        self.calls += 1
+        if self.calls <= self._fail_times:
+            err = RuntimeError("transient boom")
+            err.status_code = self._status
+            raise err
+        return iter(self._chunks)
+
+
+class _FlakyClient:
+    def __init__(self, chunks, fail_times, status_code=503):
+        self.chat = SimpleNamespace(
+            completions=_FlakyCompletions(chunks, fail_times, status_code))
+
+
+def test_retries_transient_5xx_then_succeeds():
+    client = LLMClient(client=_FlakyClient([_delta_chunk(content="ok")], fail_times=2))
+    msg = client.chat(model="m", messages=[], max_retries=3, backoff=0)
+    assert msg["content"] == "ok"
+    assert client._client.chat.completions.calls == 3  # 2 failures + 1 success
+
+
+def test_gives_up_after_max_retries():
+    client = LLMClient(client=_FlakyClient([_delta_chunk(content="ok")], fail_times=9))
+    with pytest.raises(RuntimeError, match="transient"):
+        client.chat(model="m", messages=[], max_retries=2, backoff=0)
+    assert client._client.chat.completions.calls == 3  # initial + 2 retries
+
+
+def test_does_not_retry_non_transient_4xx():
+    client = LLMClient(client=_FlakyClient([_delta_chunk(content="x")],
+                                           fail_times=1, status_code=400))
+    with pytest.raises(RuntimeError):
+        client.chat(model="m", messages=[], max_retries=3, backoff=0)
+    assert client._client.chat.completions.calls == 1  # 400 is not retried
+
+
 def test_assembles_multiple_tool_calls_ordered_by_index():
     chunks = [
         _delta_chunk(tool_calls=[_tc(0, id="c0", name="alpha", arguments="{}")]),
