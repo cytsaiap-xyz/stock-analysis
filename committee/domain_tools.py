@@ -19,7 +19,8 @@ def build_registry(twse: Any) -> ToolRegistry:
     ))
 
     def _indicators(stock_no: str, months: int = 3):
-        return compute_indicators(twse.price_history(stock_no, months=months))
+        # LLMs often pass numeric args as strings ("3"); coerce defensively.
+        return compute_indicators(twse.price_history(stock_no, months=int(months)))
 
     reg.register(Tool(
         name="get_technical_indicators",

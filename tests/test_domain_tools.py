@@ -29,3 +29,16 @@ def test_get_technical_indicators_tool_runs():
     out = reg.get("get_technical_indicators").fn(stock_no="2330", months=1)
     assert out["last_close"] == 14.0  # close of last (10+4) row
     assert "trend" in out
+
+
+def test_get_technical_indicators_coerces_string_months():
+    # Regression: the live LLM passed months="3" (a string). The real TwseClient
+    # does integer math on months, so a string raised TypeError. The tool must coerce.
+    class _IntMonthsTwse(_FakeTwse):
+        def price_history(self, stock_no, months=3):
+            _ = list(range(months))  # would raise TypeError if months is a str
+            return super().price_history(stock_no, months=months)
+
+    reg = build_registry(_IntMonthsTwse())
+    out = reg.get("get_technical_indicators").fn(stock_no="2330", months="3")
+    assert "trend" in out
