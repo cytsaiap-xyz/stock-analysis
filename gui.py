@@ -20,12 +20,14 @@ from agentcore.events import Event, EventBus
 from agentcore.evidence import EvidenceLedger
 from agentcore.llm import LLMClient
 from agentcore.orchestrator import Orchestrator
+from agentcore.report import ReportCollector
 from committee.agents import (ANALYST_TASK_TEMPLATE, CHALLENGE_TASK_TEMPLATE,
                               CORRECTION_TASK_TEMPLATE, REBUTTAL_TASK_TEMPLATE,
                               VERIFY_TASK_TEMPLATE, build_committee)
 from committee.config import CACHE_DIR, NVIDIA_BASE_URL
 from committee.data.twse import TwseClient
 from committee.domain_tools import build_registry
+from committee.report import save_report
 
 AGENT_COLORS = {
     "fundamental": "#1f6feb",
@@ -245,6 +247,9 @@ class CommitteeGUI:
         try:
             bus = EventBus()
             bus.subscribe(self.queue.put)
+            collector = ReportCollector()
+            bus.subscribe(collector)
+            ledger = EvidenceLedger()
             llm = LLMClient(base_url=NVIDIA_BASE_URL)
             registry = build_registry(TwseClient(cache_dir=CACHE_DIR))
             committee = build_committee()
@@ -257,7 +262,10 @@ class CommitteeGUI:
                                 verify_task_template=VERIFY_TASK_TEMPLATE,
                                 correction_task_template=CORRECTION_TASK_TEMPLATE)
             orch.run(stock_no=stock, llm=llm, registry=registry,
-                     bus=bus, ledger=EvidenceLedger())
+                     bus=bus, ledger=ledger)
+            path = save_report(stock, collector, ledger=ledger)
+            self.queue.put(Event(type="report", agent="system",
+                                 data={"path": str(path)}))
         except Exception as exc:
             self.queue.put(Event(type="error", agent="system",
                                  data={"tool": "run", "error": str(exc)}))
@@ -282,6 +290,9 @@ class CommitteeGUI:
             self._busy = False
             self.btn.config(state="normal", text="開始分析")
             self._set_status("● 閒置 — 已完成")
+            return
+        if et == "report":
+            self._set_status("📄 報告已存: " + e.data.get("path", ""))
             return
         if et == "verdict":
             head = verdict_headline(e.data.get("text", ""))

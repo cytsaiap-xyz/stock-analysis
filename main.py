@@ -6,12 +6,14 @@ from agentcore.events import Event, EventBus
 from agentcore.evidence import EvidenceLedger
 from agentcore.llm import LLMClient
 from agentcore.orchestrator import Orchestrator
+from agentcore.report import ReportCollector
 from committee.agents import (ANALYST_TASK_TEMPLATE, CHALLENGE_TASK_TEMPLATE,
                               CORRECTION_TASK_TEMPLATE, REBUTTAL_TASK_TEMPLATE,
                               VERIFY_TASK_TEMPLATE, build_committee)
 from committee.config import CACHE_DIR, NVIDIA_BASE_URL
 from committee.data.twse import TwseClient
 from committee.domain_tools import build_registry
+from committee.report import save_report
 
 
 class TerminalRenderer:
@@ -47,6 +49,8 @@ class TerminalRenderer:
 def run(stock_no: str) -> str:
     bus = EventBus()
     bus.subscribe(TerminalRenderer())
+    collector = ReportCollector()
+    bus.subscribe(collector)
     ledger = EvidenceLedger()
     llm = LLMClient(base_url=NVIDIA_BASE_URL)
     registry = build_registry(TwseClient(cache_dir=CACHE_DIR))
@@ -58,7 +62,11 @@ def run(stock_no: str) -> str:
                         rebuttal_task_template=REBUTTAL_TASK_TEMPLATE,
                         verify_task_template=VERIFY_TASK_TEMPLATE,
                         correction_task_template=CORRECTION_TASK_TEMPLATE)
-    return orch.run(stock_no=stock_no, llm=llm, registry=registry, bus=bus, ledger=ledger)
+    verdict = orch.run(stock_no=stock_no, llm=llm, registry=registry,
+                       bus=bus, ledger=ledger)
+    path = save_report(stock_no, collector, ledger=ledger)
+    print("\n[報告] 已存至: {}".format(path))
+    return verdict
 
 
 if __name__ == "__main__":
