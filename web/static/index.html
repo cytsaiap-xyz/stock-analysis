@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="utf-8">
+<title>台股投資委員會 — Agentic AI</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header>
+  <h1>台股投資委員會 <span class="sub">Agentic AI (7 位委員 + 自我查核)</span></h1>
+  <div class="controls">
+    <label>股票代號:</label>
+    <input id="ticker" type="text" value="2330" maxlength="6">
+    <button id="run">開始分析</button>
+  </div>
+</header>
+
+<section id="verdict">結論:(請先執行分析)</section>
+<section id="verify" class="hidden"></section>
+<section id="status">● 閒置</section>
+
+<main>
+  <aside id="pipeline">
+    <h2>執行流程 Pipeline</h2>
+    <div id="cards">載入委員會資訊中...</div>
+  </aside>
+  <article id="feed">
+    <h2>即時討論 Live debate</h2>
+    <div id="messages"></div>
+  </article>
+</main>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
