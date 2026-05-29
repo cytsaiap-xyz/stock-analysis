@@ -70,6 +70,20 @@ def test_raises_when_no_key_and_no_client(monkeypatch):
         LLMClient()
 
 
+def test_reads_custom_api_key_env(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
+    # Constructs the OpenAI client offline (no network) when the key is present.
+    client = LLMClient(base_url="https://openrouter.ai/api/v1",
+                       api_key_env="OPENROUTER_API_KEY")
+    assert client._client is not None
+
+
+def test_missing_custom_key_raises_with_that_env_name(monkeypatch):
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    with pytest.raises(RuntimeError, match="OPENROUTER_API_KEY"):
+        LLMClient(api_key_env="OPENROUTER_API_KEY")
+
+
 class _FlakyCompletions:
     def __init__(self, chunks, fail_times, status_code=503):
         self._chunks = chunks

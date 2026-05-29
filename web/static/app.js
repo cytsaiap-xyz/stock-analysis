@@ -52,6 +52,7 @@ function buildPipeline() {
   push("phase:REBUTTAL", "答辯(分析師回應)");
   push("phase:VERDICT", "最終結論");
   push("agent:chair", roster.chair.zh, roster.chair.model, []);
+  if (roster.reflection_passes > 0) push("phase:REFLECT", "自我反省");
   push("phase:VERIFY", "自我查核");
   push("agent:verifier", roster.verifier.zh, roster.verifier.model, []);
   if (cardsEl.lastChild && cardsEl.lastChild.className === "arrow") cardsEl.removeChild(cardsEl.lastChild);

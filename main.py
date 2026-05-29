@@ -9,8 +9,9 @@ from agentcore.orchestrator import Orchestrator
 from agentcore.report import ReportCollector
 from committee.agents import (ANALYST_TASK_TEMPLATE, CHALLENGE_TASK_TEMPLATE,
                               CORRECTION_TASK_TEMPLATE, REBUTTAL_TASK_TEMPLATE,
-                              VERIFY_TASK_TEMPLATE, build_committee)
-from committee.config import CACHE_DIR, NVIDIA_BASE_URL
+                              REFLECT_TASK_TEMPLATE, VERIFY_TASK_TEMPLATE,
+                              build_committee)
+from committee.config import API_KEY_ENV, BASE_URL, CACHE_DIR, REFLECTION_PASSES
 from committee.data.twse import TwseClient
 from committee.domain_tools import build_registry
 from committee.report import save_report
@@ -52,7 +53,7 @@ def run(stock_no: str) -> str:
     collector = ReportCollector()
     bus.subscribe(collector)
     ledger = EvidenceLedger()
-    llm = LLMClient(base_url=NVIDIA_BASE_URL)
+    llm = LLMClient(base_url=BASE_URL, api_key_env=API_KEY_ENV)
     registry = build_registry(TwseClient(cache_dir=CACHE_DIR))
     committee = build_committee()
     orch = Orchestrator(research=committee.research, challengers=committee.challengers,
@@ -60,6 +61,8 @@ def run(stock_no: str) -> str:
                         analyst_task_template=ANALYST_TASK_TEMPLATE,
                         challenge_task_template=CHALLENGE_TASK_TEMPLATE,
                         rebuttal_task_template=REBUTTAL_TASK_TEMPLATE,
+                        reflect_task_template=REFLECT_TASK_TEMPLATE,
+                        reflection_passes=REFLECTION_PASSES,
                         verify_task_template=VERIFY_TASK_TEMPLATE,
                         correction_task_template=CORRECTION_TASK_TEMPLATE)
     verdict = orch.run(stock_no=stock_no, llm=llm, registry=registry,

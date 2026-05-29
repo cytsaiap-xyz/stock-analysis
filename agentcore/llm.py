@@ -25,13 +25,14 @@ class LLMClient:
         api_key: Optional[str] = None,
         base_url: str = "https://integrate.api.nvidia.com/v1",
         client: Any = None,
+        api_key_env: str = "NVIDIA_API_KEY",
     ) -> None:
         if client is not None:
             self._client = client
             return
-        key = api_key or os.environ.get("NVIDIA_API_KEY")
+        key = api_key or os.environ.get(api_key_env)
         if not key:
-            raise RuntimeError("NVIDIA_API_KEY is not set")
+            raise RuntimeError("{} is not set".format(api_key_env))
         from openai import OpenAI
 
         self._client = OpenAI(base_url=base_url, api_key=key)

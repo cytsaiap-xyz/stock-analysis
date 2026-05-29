@@ -27,8 +27,9 @@ from agentcore.orchestrator import Orchestrator
 from agentcore.report import ReportCollector
 from committee.agents import (ANALYST_TASK_TEMPLATE, CHALLENGE_TASK_TEMPLATE,
                               CORRECTION_TASK_TEMPLATE, REBUTTAL_TASK_TEMPLATE,
-                              VERIFY_TASK_TEMPLATE, build_committee)
-from committee.config import CACHE_DIR, NVIDIA_BASE_URL
+                              REFLECT_TASK_TEMPLATE, VERIFY_TASK_TEMPLATE,
+                              build_committee)
+from committee.config import API_KEY_ENV, BASE_URL, CACHE_DIR, REFLECTION_PASSES
 from committee.data.twse import TwseClient
 from committee.domain_tools import build_registry
 from committee.report import save_report
@@ -40,7 +41,8 @@ _AGENT_ZH = {
     "chair": "主席", "verifier": "查核員", "system": "系統",
 }
 _PHASE_ZH = {"RESEARCH": "研究分析", "CHALLENGE": "質詢",
-             "REBUTTAL": "答辯", "VERDICT": "最終結論", "VERIFY": "自我查核"}
+             "REBUTTAL": "答辯", "VERDICT": "最終結論",
+             "REFLECT": "自我反省", "VERIFY": "自我查核"}
 
 _STATIC = Path(__file__).parent / "static"
 _REPORTS = Path("reports")
@@ -79,6 +81,7 @@ def committee_info() -> Dict[str, Any]:
         "verifier": info(c.verifier, "verifier"),
         "phase_zh": _PHASE_ZH,
         "agent_zh": _AGENT_ZH,
+        "reflection_passes": REFLECTION_PASSES,
     }
 
 
@@ -93,7 +96,7 @@ def _run_committee(stock_no: str, q: "queue.Queue",
         bus = EventBus()
         bus.subscribe(q.put)
         bus.subscribe(collector)
-        llm = LLMClient(base_url=NVIDIA_BASE_URL)
+        llm = LLMClient(base_url=BASE_URL, api_key_env=API_KEY_ENV)
         registry = build_registry(TwseClient(cache_dir=CACHE_DIR))
         committee = build_committee()
         orch = Orchestrator(research=committee.research,
@@ -102,6 +105,8 @@ def _run_committee(stock_no: str, q: "queue.Queue",
                             analyst_task_template=ANALYST_TASK_TEMPLATE,
                             challenge_task_template=CHALLENGE_TASK_TEMPLATE,
                             rebuttal_task_template=REBUTTAL_TASK_TEMPLATE,
+                            reflect_task_template=REFLECT_TASK_TEMPLATE,
+                            reflection_passes=REFLECTION_PASSES,
                             verify_task_template=VERIFY_TASK_TEMPLATE,
                             correction_task_template=CORRECTION_TASK_TEMPLATE)
         orch.run(stock_no=stock_no, llm=llm, registry=registry,

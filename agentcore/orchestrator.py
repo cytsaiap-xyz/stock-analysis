@@ -18,6 +18,12 @@ _DEFAULT_REBUTTAL_TASK = (
     "The challengers raised the points above. In one paragraph, respond to those "
     "relevant to your expertise or revise your earlier view on {stock}."
 )
+_DEFAULT_REFLECT_TASK = (
+    "Re-examine your own draft recommendation for {stock} shown above. Check whether "
+    "your reasoning is sound, internally consistent, and supported by the cited data. "
+    "Then output an improved final recommendation in the EXACT same format; do not add "
+    "any commentary outside that format."
+)
 _DEFAULT_VERIFY_TASK = (
     "Review the committee's verdict on {stock} against the data the analysts cited. "
     "Flag any figure not supported by the data, or any internal inconsistency; be concise."
@@ -35,7 +41,8 @@ def _join(items: List[Tuple[str, str]]) -> str:
 
 @dataclass
 class Orchestrator:
-    """Runs a Chair-led, bounded debate: RESEARCH -> CHALLENGE -> REBUTTAL -> VERDICT.
+    """Runs a Chair-led, bounded debate: RESEARCH -> CHALLENGE -> REBUTTAL -> VERDICT
+    -> (optional REFLECT) -> (optional VERIFY).
 
     Domain-agnostic: it only sequences groups of agents and passes prior statements
     forward as context. Task wording is injected via the templates.
@@ -46,6 +53,8 @@ class Orchestrator:
     analyst_task_template: str = _DEFAULT_ANALYST_TASK
     challenge_task_template: str = _DEFAULT_CHALLENGE_TASK
     rebuttal_task_template: str = _DEFAULT_REBUTTAL_TASK
+    reflect_task_template: str = _DEFAULT_REFLECT_TASK
+    reflection_passes: int = 0          # 0 = off; Chair self-refines its draft N times
     verifier: Any = None
     verify_task_template: str = _DEFAULT_VERIFY_TASK
     correction_task_template: str = _DEFAULT_CORRECTION_TASK
@@ -88,7 +97,23 @@ class Orchestrator:
             "Now issue the committee's final recommendation."
         ).format(stock_no, _join(transcript))
         verdict = run_agent(self.chair, chair_task)
-        bus.emit(Event(type="verdict", agent=self.chair.name, data={"text": verdict}))
+
+        # REFLECT: optional Chair self-refinement of its own draft, before VERIFY.
+        # Each pass feeds the current verdict back as context; the Chair must return an
+        # improved verdict in the same format (no free-form critique outside it).
+        reflected = False
+        if self.reflection_passes > 0:
+            phase("REFLECT")
+            for _ in range(self.reflection_passes):
+                verdict = run_agent(self.chair,
+                                    self.reflect_task_template.format(stock=stock_no),
+                                    context=verdict)
+                reflected = True
+
+        verdict_data = {"text": verdict}
+        if reflected:
+            verdict_data["reflected"] = True
+        bus.emit(Event(type="verdict", agent=self.chair.name, data=verdict_data))
 
         if self.verifier is None:
             return verdict

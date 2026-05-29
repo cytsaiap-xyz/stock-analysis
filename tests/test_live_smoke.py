@@ -1,11 +1,13 @@
 import os
 import pytest
 
+from committee.config import API_KEY_ENV
+
 pytestmark = pytest.mark.live
 
 
-@pytest.mark.skipif(not os.environ.get("NVIDIA_API_KEY"),
-                    reason="NVIDIA_API_KEY not set")
+@pytest.mark.skipif(not os.environ.get(API_KEY_ENV),
+                    reason="{} not set (active LLM provider's key)".format(API_KEY_ENV))
 def test_live_run_produces_recommendation():
     from main import run
     verdict = run("2330")

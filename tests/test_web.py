@@ -33,6 +33,13 @@ def test_committee_info_returns_full_roster():
     assert "model" in fund and isinstance(fund["tools"], list)
 
 
+def test_committee_info_exposes_reflection_settings():
+    body = committee_info()
+    # Front-end needs the ZH label for the new REFLECT phase and whether it's on.
+    assert "REFLECT" in body["phase_zh"]
+    assert isinstance(body["reflection_passes"], int)
+
+
 def test_static_index_is_present_on_disk():
     # The GET / FileResponse just serves this file; if it's missing, the route 404s.
     assert (_STATIC / "index.html").is_file()

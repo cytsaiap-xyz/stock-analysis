@@ -69,9 +69,64 @@ def test_research_analyst_gets_a_rebuttal_round():
 
 def test_default_templates_are_domain_neutral():
     from agentcore.orchestrator import (_DEFAULT_ANALYST_TASK, _DEFAULT_CHALLENGE_TASK,
-                                         _DEFAULT_REBUTTAL_TASK)
-    for tmpl in (_DEFAULT_ANALYST_TASK, _DEFAULT_CHALLENGE_TASK, _DEFAULT_REBUTTAL_TASK):
+                                         _DEFAULT_REBUTTAL_TASK, _DEFAULT_REFLECT_TASK)
+    for tmpl in (_DEFAULT_ANALYST_TASK, _DEFAULT_CHALLENGE_TASK,
+                 _DEFAULT_REBUTTAL_TASK, _DEFAULT_REFLECT_TASK):
         assert "Taiwan" not in tmpl and "{stock}" in tmpl
+
+
+def test_reflection_off_by_default_keeps_phases_and_chair_calls_unchanged():
+    fund = _StubAgent("fundamental", "看多")
+    chair = _StubAgent("chair", "建議: 持有")
+    orch = _orch([fund], [], chair)            # reflection_passes defaults to 0
+    bus, ledger = EventBus(), EvidenceLedger()
+    events = []
+    bus.subscribe(events.append)
+
+    orch.run(stock_no="2330", llm=None, registry=None, bus=bus, ledger=ledger)
+
+    phases = [e.data.get("phase") for e in events if e.type == "phase" and "phase" in e.data]
+    assert "REFLECT" not in phases
+    assert len(chair.tasks) == 1
+
+
+def test_reflection_adds_phase_and_one_extra_chair_call_when_enabled():
+    fund = _StubAgent("fundamental", "看多")
+    chair = _StubAgent("chair", "建議: 持有\n信心: 60%\n理由。")
+    orch = _orch([fund], [], chair,
+                 reflect_task_template="Reflect on your verdict for {stock}.",
+                 reflection_passes=1)
+    bus, ledger = EventBus(), EvidenceLedger()
+    events = []
+    bus.subscribe(events.append)
+
+    verdict = orch.run(stock_no="2330", llm=None, registry=None, bus=bus, ledger=ledger)
+
+    phases = [e.data.get("phase") for e in events if e.type == "phase" and "phase" in e.data]
+    assert phases == ["RESEARCH", "CHALLENGE", "REBUTTAL", "VERDICT", "REFLECT"]
+    assert len(chair.tasks) == 2                        # draft + one reflection
+    assert chair.tasks[1]["context"] == "建議: 持有\n信心: 60%\n理由。"  # reflects on its draft
+    assert verdict.startswith("建議: 持有")
+    verdicts = [e for e in events if e.type == "verdict"]
+    assert verdicts[-1].data.get("reflected") is True
+
+
+def test_reflection_runs_before_verify():
+    fund = _StubAgent("fundamental", "看多")
+    chair = _StubAgent("chair", "建議: 持有\n本益比 30.52 偏高")  # 30.52 is supported
+    verifier = _StubAgent("verifier", "查核通過")
+    orch = _orch([fund], [], chair, verifier=verifier,
+                 reflect_task_template="Reflect {stock}.", reflection_passes=1)
+    bus, ledger = EventBus(), EvidenceLedger()
+    ledger.record("get_valuation", {}, {"pe": 30.52})
+    events = []
+    bus.subscribe(events.append)
+
+    orch.run(stock_no="2330", llm=None, registry=None, bus=bus, ledger=ledger)
+
+    phases = [e.data.get("phase") for e in events if e.type == "phase" and "phase" in e.data]
+    assert phases == ["RESEARCH", "CHALLENGE", "REBUTTAL", "VERDICT", "REFLECT", "VERIFY"]
+    assert len(chair.tasks) == 2                        # draft + reflection; verdict grounded
 
 
 def test_custom_analyst_task_template_is_used():
