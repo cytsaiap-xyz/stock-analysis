@@ -107,3 +107,47 @@ def test_monthly_revenue_missing_is_graceful(tmp_path):
 
     out = client.monthly_revenue("2330")
     assert out["available"] is False and "暫無" in out["note"]
+
+
+def test_index_history_parses_taiex_close(tmp_path):
+    payload = {"stat": "OK",
+               "fields": ["日期", "開盤指數", "最高指數", "最低指數", "收盤指數"],
+               "data": [["115/05/02", "100.00", "110.00", "95.00", "105.00"],
+                        ["115/05/03", "105.00", "115.00", "100.00", "112.00"]]}
+    session = _FakeSession({"MI_5MINS_HIST": payload})
+    client = TwseClient(cache_dir=str(tmp_path), session=session)
+
+    rows = client.index_history(months=1)
+    assert rows[0] == {"date": "2026-05-02", "close": 105.0}
+    assert rows[-1] == {"date": "2026-05-03", "close": 112.0}
+
+
+_INCOME_ROW = {"公司代號": "2330", "公司名稱": "台積電", "年度": "115", "季別": "1",
+               "營業收入": "800000.00", "營業毛利（毛損）淨額": "480000.00",
+               "營業利益（損失）": "400000.00", "本期淨利（淨損）": "360000.00",
+               "基本每股盈餘（元）": "13.94"}
+_BALANCE_ROW = {"公司代號": "2330", "權益總額": "3600000.00", "每股參考淨值": "150.50"}
+
+
+def test_financials_found_computes_margins_and_roe(tmp_path):
+    session = _FakeSession({"t187ap06_L_ci": [_INCOME_ROW],
+                            "t187ap07_L_ci": [_BALANCE_ROW]})
+    client = TwseClient(cache_dir=str(tmp_path), session=session, today=date(2026, 5, 27))
+
+    out = client.financials("2330")
+    assert out["available"] is True
+    assert out["period"] == "115Q1"
+    assert out["gross_margin_pct"] == 60.0       # 480000 / 800000
+    assert out["operating_margin_pct"] == 50.0   # 400000 / 800000
+    assert out["roe_pct"] == 10.0                # 360000 / 3600000
+    assert out["eps"] == 13.94
+    assert out["book_value_per_share"] == 150.5
+
+
+def test_financials_missing_is_graceful(tmp_path):
+    session = _FakeSession({"t187ap06_L_ci": [{"公司代號": "9999"}],
+                            "t187ap07_L_ci": []})
+    client = TwseClient(cache_dir=str(tmp_path), session=session, today=date(2026, 5, 27))
+
+    out = client.financials("2330")
+    assert out["available"] is False and "暫無" in out["note"]

@@ -127,6 +127,57 @@ class TwseClient:
         return {"stock_no": stock_no, "available": False,
                 "note": "月營收資料暫無(該股未出現在最新批次)"}
 
+    def index_history(self, months: int = 3) -> List[Dict[str, Any]]:
+        """TAIEX daily closes (MI_5MINS_HIST), for relative-strength vs the market."""
+        rows: List[Dict[str, Any]] = []
+        for yyyymm in self._recent_months(months):
+            key = "taiex_hist_" + yyyymm
+            body = self._fetch(_BASE + "/indicesReport/MI_5MINS_HIST",
+                               {"response": "json", "date": yyyymm + "01"}, key)
+            for row in body.get("data") or []:
+                rows.append({"date": roc_to_iso(row[0]), "close": to_float(row[4])})
+        rows.sort(key=lambda r: r["date"])
+        return rows
+
+    def financials(self, stock_no: str) -> Dict[str, Any]:
+        """Latest quarterly fundamentals from the listed income statement
+        (t187ap06_L_ci) and balance sheet (t187ap07_L_ci) opendata batches.
+        Figures are cumulative (year-to-date) for the reported quarter. Graceful
+        fallback when the stock is not in the latest batch (coverage varies)."""
+        ym = self._today.strftime("%Y%m")
+        income = self._fetch(_OPENAPI + "/opendata/t187ap06_L_ci", {}, "income_stmt_" + ym)
+        inc = next((r for r in (income or []) if r.get("公司代號") == stock_no), None)
+        if inc is None:
+            return {"stock_no": stock_no, "available": False,
+                    "note": "財報資料暫無(該股未出現在最新批次)"}
+
+        balance = self._fetch(_OPENAPI + "/opendata/t187ap07_L_ci", {},
+                              "balance_sheet_" + ym)
+        bal = next((r for r in (balance or []) if r.get("公司代號") == stock_no), {})
+
+        revenue = to_float(inc.get("營業收入"))
+        gross = (to_float(inc.get("營業毛利（毛損）淨額"))
+                 or to_float(inc.get("營業毛利（毛損）")))
+        operating = to_float(inc.get("營業利益（損失）"))
+        net_income = to_float(inc.get("本期淨利（淨損）"))
+        equity = to_float(bal.get("權益總額"))
+
+        def _pct(num: Optional[float], den: Optional[float]) -> Optional[float]:
+            if num is None or not den:
+                return None
+            return round(num / den * 100, 2)
+
+        return {"stock_no": stock_no, "available": True,
+                "name": inc.get("公司名稱"),
+                "period": "{}Q{}".format(inc.get("年度"), inc.get("季別")),
+                "revenue": revenue,
+                "gross_margin_pct": _pct(gross, revenue),
+                "operating_margin_pct": _pct(operating, revenue),
+                "net_income": net_income,
+                "roe_pct": _pct(net_income, equity),
+                "eps": to_float(inc.get("基本每股盈餘（元）")),
+                "book_value_per_share": to_float(bal.get("每股參考淨值"))}
+
     def _recent_months(self, months: int) -> List[str]:
         out: List[str] = []
         y, m = self._today.year, self._today.month

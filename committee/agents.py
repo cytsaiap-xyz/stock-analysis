@@ -6,15 +6,18 @@ from committee.config import MODEL_REASONER, MODEL_TOOL_CALLER
 
 _FUNDAMENTAL_PROMPT = (
     "你是一位專注台股的基本面分析師。請使用 get_valuation 取得本益比、股價淨值比與"
-    "殖利率,並用 get_monthly_revenue 取得最新月營收年增率,判斷估值與成長性。"
+    "殖利率,get_monthly_revenue 取得最新月營收年增率,並用 get_financials 取得最新一季"
+    "毛利率、營業利益率、ROE 與 EPS,綜合判斷估值、獲利能力與成長性。"
     "請以繁體中文、精簡作答(120字以內),最後以明確傾向作結:看多、看空 或 中性。"
     "切勿捏造數字;若工具失敗或資料暫無,請直接說明。"
 )
 
 _TECHNICAL_PROMPT = (
-    "你是一位專注台股的技術面分析師。請使用 get_technical_indicators 取得均線、趨勢與"
-    "動能,評估趨勢與進場時機。請以繁體中文、精簡作答(120字以內),最後以明確傾向"
-    "作結:看多、看空 或 中性。切勿捏造數字;若工具失敗,請直接說明資料無法取得。"
+    "你是一位專注台股的技術面分析師。請使用 get_technical_indicators 取得均線、趨勢、"
+    "動能與震盪指標(RSI14、KD、MACD),並用 get_relative_strength 取得相對大盤的超額"
+    "報酬與 beta,綜合判斷趨勢、超買超賣、相對強弱與進場時機。"
+    "請以繁體中文、精簡作答(120字以內),最後以明確傾向作結:看多、看空 或 中性。"
+    "切勿捏造數字;若工具失敗或某指標為 null(資料不足),請直接說明,不要臆測。"
 )
 
 _INSTITUTIONAL_PROMPT = (
@@ -88,10 +91,11 @@ class Committee:
 def build_committee() -> Committee:
     fundamental = Agent(name="fundamental", role="Fundamental Analyst",
                         system_prompt=_FUNDAMENTAL_PROMPT, model=MODEL_TOOL_CALLER,
-                        tool_names=["get_valuation", "get_monthly_revenue"])
+                        tool_names=["get_valuation", "get_monthly_revenue",
+                                    "get_financials"])
     technical = Agent(name="technical", role="Technical Analyst",
                       system_prompt=_TECHNICAL_PROMPT, model=MODEL_TOOL_CALLER,
-                      tool_names=["get_technical_indicators"])
+                      tool_names=["get_technical_indicators", "get_relative_strength"])
     institutional = Agent(name="institutional", role="Institutional Flow Analyst",
                           system_prompt=_INSTITUTIONAL_PROMPT, model=MODEL_TOOL_CALLER,
                           tool_names=["get_institutional_flows"])

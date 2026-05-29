@@ -1,4 +1,9 @@
-from committee.data.indicators import compute_indicators, compute_risk
+from committee.data.indicators import (
+    compute_indicators,
+    compute_oscillators,
+    compute_relative_strength,
+    compute_risk,
+)
 
 
 def _series(closes):
@@ -44,3 +49,79 @@ def test_compute_risk_reports_max_drawdown():
 def test_compute_risk_empty_series():
     assert compute_risk([]) == {"volatility_annual_pct": None,
                                 "max_drawdown_pct": None, "samples": 0}
+
+
+def test_oscillators_empty_series_returns_nulls():
+    out = compute_oscillators([])
+    assert out == {"rsi14": None, "kd_k": None, "kd_d": None,
+                   "macd": None, "macd_signal": None, "macd_hist": None}
+
+
+def test_oscillators_insufficient_data_returns_nulls():
+    # 5 closes: too few for RSI(14), KD(9) or MACD(26).
+    out = compute_oscillators(_series([10, 11, 12, 11, 10]))
+    assert out["rsi14"] is None and out["kd_k"] is None and out["macd"] is None
+
+
+def test_rsi_is_100_on_strictly_rising_series():
+    out = compute_oscillators(_series(list(range(1, 26))))  # all gains, no losses
+    assert out["rsi14"] == 100.0
+
+
+def test_rsi_is_0_on_strictly_falling_series():
+    out = compute_oscillators(_series(list(range(25, 0, -1))))  # all losses
+    assert out["rsi14"] == 0.0
+
+
+def test_kd_high_on_sustained_uptrend():
+    out = compute_oscillators(_series(list(range(1, 26))))
+    assert out["kd_k"] > 80 and out["kd_d"] > 80
+
+
+def test_kd_low_on_sustained_downtrend():
+    out = compute_oscillators(_series(list(range(25, 0, -1))))
+    assert out["kd_k"] < 20 and out["kd_d"] < 20
+
+
+def test_macd_positive_in_uptrend_and_has_signal_hist():
+    out = compute_oscillators(_series(list(range(1, 41))))  # >= 26 points
+    assert out["macd"] > 0
+    assert out["macd_signal"] is not None and out["macd_hist"] is not None
+
+
+def test_macd_none_when_fewer_than_26_points():
+    out = compute_oscillators(_series(list(range(1, 21))))  # 20 points
+    assert out["macd"] is None and out["macd_signal"] is None
+
+
+def _closes(dates_closes):
+    return [{"date": d, "close": c} for d, c in dates_closes]
+
+
+def test_relative_strength_outperformance():
+    stock = _closes([("2026-05-01", 100.0), ("2026-05-02", 120.0)])   # +20%
+    index = _closes([("2026-05-01", 100.0), ("2026-05-02", 110.0)])   # +10%
+    out = compute_relative_strength(stock, index)
+    assert out["stock_return_pct"] == 20.0
+    assert out["index_return_pct"] == 10.0
+    assert out["excess_return_pct"] == 10.0   # outperformed the market
+
+
+def test_relative_strength_underperformance_is_negative():
+    stock = _closes([("2026-05-01", 100.0), ("2026-05-02", 105.0)])   # +5%
+    index = _closes([("2026-05-01", 100.0), ("2026-05-02", 110.0)])   # +10%
+    out = compute_relative_strength(stock, index)
+    assert out["excess_return_pct"] == -5.0
+
+
+def test_relative_strength_empty_series_returns_nulls():
+    out = compute_relative_strength([], [])
+    assert out["stock_return_pct"] is None and out["excess_return_pct"] is None
+
+
+def test_relative_strength_beta_computed_when_enough_aligned_days():
+    # stock daily return is exactly 2x the index's each day -> beta == 2.0
+    idx = _closes([("d1", 100.0), ("d2", 110.0), ("d3", 104.5), ("d4", 125.4)])
+    stk = _closes([("d1", 100.0), ("d2", 120.0), ("d3", 108.0), ("d4", 151.2)])
+    out = compute_relative_strength(stk, idx)
+    assert out["beta"] is not None and round(out["beta"], 1) == 2.0

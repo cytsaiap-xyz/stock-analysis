@@ -1,7 +1,12 @@
 from typing import Any
 
 from agentcore.tools import Tool, ToolRegistry
-from committee.data.indicators import compute_indicators, compute_risk
+from committee.data.indicators import (
+    compute_indicators,
+    compute_oscillators,
+    compute_relative_strength,
+    compute_risk,
+)
 from committee.data.news import search_news as _search_news
 
 _STOCK_NO = {"type": "string", "description": "Taiwan stock code, e.g. 2330"}
@@ -21,12 +26,14 @@ def build_registry(twse: Any) -> ToolRegistry:
 
     def _indicators(stock_no: str, months: int = 3):
         # LLMs often pass numeric args as strings ("3"); coerce defensively.
-        return compute_indicators(twse.price_history(stock_no, months=int(months)))
+        prices = twse.price_history(stock_no, months=int(months))
+        return {**compute_indicators(prices), **compute_oscillators(prices)}
 
     reg.register(Tool(
         name="get_technical_indicators",
-        description=("Get moving averages (MA5/20/60), trend, period % change and "
-                     "average volume for a Taiwan stock, computed from TWSE daily prices."),
+        description=("Get moving averages (MA5/20/60), trend, period % change, "
+                     "average volume and momentum oscillators (RSI14, KD, MACD) "
+                     "for a Taiwan stock, computed from TWSE daily prices."),
         parameters={"type": "object",
                     "properties": {"stock_no": _STOCK_NO,
                                    "months": {"type": "integer",
@@ -67,6 +74,33 @@ def build_registry(twse: Any) -> ToolRegistry:
                                               "default": 3}},
                     "required": ["stock_no"]},
         fn=_risk,
+    ))
+
+    def _relative_strength(stock_no: str, months: int = 3):
+        return compute_relative_strength(twse.price_history(stock_no, months=int(months)),
+                                         twse.index_history(months=int(months)))
+
+    reg.register(Tool(
+        name="get_relative_strength",
+        description=("取得台股某檔相對大盤(加權指數)的表現:期間個股報酬率、大盤報酬率、"
+                     "超額報酬(excess_return_pct,>0 代表強於大盤)與 beta。"),
+        parameters={"type": "object",
+                    "properties": {"stock_no": _STOCK_NO,
+                                   "months": {"type": "integer",
+                                              "description": "近幾個月資料",
+                                              "default": 3}},
+                    "required": ["stock_no"]},
+        fn=_relative_strength,
+    ))
+
+    reg.register(Tool(
+        name="get_financials",
+        description=("取得台股某檔最新一季財報基本面:營收、毛利率、營業利益率、稅後淨利、"
+                     "ROE、EPS 與每股淨值;若最新批次未涵蓋該股,會回報資料暫無。"),
+        parameters={"type": "object",
+                    "properties": {"stock_no": _STOCK_NO},
+                    "required": ["stock_no"]},
+        fn=lambda stock_no: twse.financials(stock_no),
     ))
 
     reg.register(Tool(

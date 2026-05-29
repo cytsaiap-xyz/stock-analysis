@@ -24,10 +24,17 @@ def test_chair_and_verifier_are_reasoners_without_tools():
     assert c.verifier.model == MODEL_REASONER and c.verifier.tool_names == []
 
 
-def test_fundamental_uses_valuation_and_revenue():
+def test_fundamental_uses_valuation_revenue_and_financials():
     c = build_committee()
     fundamental = next(a for a in c.research if a.name == "fundamental")
-    assert fundamental.tool_names == ["get_valuation", "get_monthly_revenue"]
+    assert fundamental.tool_names == ["get_valuation", "get_monthly_revenue",
+                                      "get_financials"]
+
+
+def test_technical_uses_indicators_and_relative_strength():
+    c = build_committee()
+    technical = next(a for a in c.research if a.name == "technical")
+    assert technical.tool_names == ["get_technical_indicators", "get_relative_strength"]
 
 
 def test_skeptic_has_no_tools_risk_has_one():
