@@ -25,6 +25,7 @@ Run (all three front-ends share the same engine and produce the same `reports/<s
 python main.py 2330                          # CLI, terminal renderer
 python gui.py                                # Tkinter window, pipeline cards + live streaming
 python -m uvicorn web.server:app             # Web → http://localhost:8000
+./start-web.sh   # or  .\start-web.ps1       # web launcher (HOST/PORT overridable, args → uvicorn)
 ```
 
 Tests — pytest defaults to deselecting the live test:
@@ -49,12 +50,14 @@ python scripts/spike_phase3.py               # MI_5MINS_HIST (TAIEX), income stm
 
 - **`agentcore/`** is a *generic, reusable* multi-agent core with **zero stock-market
   knowledge**. It owns: `EventBus`, `EvidenceLedger`, `Tool/ToolRegistry`, `LLMClient`
-  (NVIDIA OpenAI-compatible, streaming + tool-call assembly + retry/backoff), `Agent`
-  (tool-calling loop), `Orchestrator` (RESEARCH→CHALLENGE→REBUTTAL→VERDICT→REFLECT→VERIFY),
-  `verify.check_grounding`, `ReportCollector`.
+  (OpenAI-compatible — NVIDIA or OpenRouter; streaming + tool-call assembly +
+  retry/backoff + cross-model fallback), `Agent` (tool-calling loop), `Orchestrator`
+  (RESEARCH→CHALLENGE→REBUTTAL→VERDICT→REFLECT→VERIFY), `verify.check_grounding`,
+  `ReportCollector`.
 - **`committee/`** is the *Taiwan-stock* domain layer: agent prompts + roster
-  (`build_committee` returns a `Committee` dataclass), the 6 tools (`build_registry`),
-  TWSE/DDGS data clients, and the HTML report builder.
+  (`build_committee` returns a `Committee` dataclass), the 8 tools (`build_registry`:
+  valuation, technical indicators, institutional flows, monthly revenue, risk metrics,
+  news, relative strength, financials), TWSE/DDGS data clients, and the HTML report builder.
 
 Anything market-specific (the word "Taiwan", agent names, tool function bodies) belongs
 in `committee/`. If you find domain language leaking into `agentcore/`, it's a bug —
@@ -99,6 +102,17 @@ carries a `reflected: True` flag (mirrors `corrected: True`).
    spec, unsupported figures are always **flagged in the final report, never silently
    removed**.
 
+### The report is an analyst-grade research note, built from data already collected
+
+`committee/report.py:build_html` renders a sell-side-style note **with no extra LLM
+calls and no invented numbers** — every figure is pulled from the `EvidenceLedger`
+(rating banner, a key-data dashboard, per-aspect sections, risk box, grounding note),
+and the full debate transcript + evidence table go into a collapsible `<details>`
+appendix. `build_html`/`save_report` take an optional `twse=` so the report can read the
+**cached** `price_history` to draw an inline-SVG price chart (close + MA20) — the three
+front-ends pass the `TwseClient` they already built. No `twse` → the chart is skipped
+gracefully. Reports save to `reports/<stock>_<ts>.html` (gitignored).
+
 ### Model strategy — two tiers, two providers, env-driven
 
 `committee/config.py` resolves **provider + role → model** from env via the pure
@@ -137,7 +151,14 @@ have a daily request cap. A full committee run is dozens of LLM calls, so a free
 run can abort mid-debate. `agentcore/llm.py` retries 429/5xx with backoff, but that
 won't beat a daily cap. Probe live availability before relying on a specific `:free` id.
 
-Agents themselves are model-agnostic — they just take a `model` string.
+**Automatic model fallback:** a model env may be a **comma-separated list** — first is
+the primary, the rest are fallbacks. `resolve()` splits them into `MODEL_*` +
+`MODEL_*_FALLBACKS`; `LLMClient.chat(fallback_models=...)` tries each in order, moving to
+the next only on a transient (429/5xx/timeout) or 404, and re-raising non-transient errors
+(auth/bad request) so real problems still surface. This lets e.g.
+`OPENROUTER_MODEL_REASONER=deepseek/deepseek-v4-flash:free,openai/gpt-oss-120b:free`
+survive a 429 on the primary. Agents themselves are model-agnostic — they take a `model`
+string plus an optional `fallback_models` list.
 
 ### Non-obvious quirks worth knowing
 
