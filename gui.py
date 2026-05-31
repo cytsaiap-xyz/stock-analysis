@@ -255,7 +255,8 @@ class CommitteeGUI:
             bus.subscribe(collector)
             ledger = EvidenceLedger()
             llm = LLMClient(base_url=BASE_URL, api_key_env=API_KEY_ENV)
-            registry = build_registry(TwseClient(cache_dir=CACHE_DIR))
+            twse = TwseClient(cache_dir=CACHE_DIR)
+            registry = build_registry(twse)
             committee = build_committee()
             orch = Orchestrator(research=committee.research,
                                 challengers=committee.challengers, chair=committee.chair,
@@ -269,7 +270,7 @@ class CommitteeGUI:
                                 correction_task_template=CORRECTION_TASK_TEMPLATE)
             orch.run(stock_no=stock, llm=llm, registry=registry,
                      bus=bus, ledger=ledger)
-            path = save_report(stock, collector, ledger=ledger)
+            path = save_report(stock, collector, ledger=ledger, twse=twse)
             self.queue.put(Event(type="report", agent="system",
                                  data={"path": str(path)}))
         except Exception as exc:

@@ -97,7 +97,8 @@ def _run_committee(stock_no: str, q: "queue.Queue",
         bus.subscribe(q.put)
         bus.subscribe(collector)
         llm = LLMClient(base_url=BASE_URL, api_key_env=API_KEY_ENV)
-        registry = build_registry(TwseClient(cache_dir=CACHE_DIR))
+        twse = TwseClient(cache_dir=CACHE_DIR)
+        registry = build_registry(twse)
         committee = build_committee()
         orch = Orchestrator(research=committee.research,
                             challengers=committee.challengers, chair=committee.chair,
@@ -112,7 +113,7 @@ def _run_committee(stock_no: str, q: "queue.Queue",
         orch.run(stock_no=stock_no, llm=llm, registry=registry,
                  bus=bus, ledger=ledger)
         path = save_report(stock_no, collector, ledger=ledger,
-                           reports_dir=str(_REPORTS))
+                           reports_dir=str(_REPORTS), twse=twse)
         q.put(Event(type="report", agent="system",
                     data={"path": path.name, "url": "/reports/" + path.name}))
     except Exception as exc:  # surface failures to the browser instead of dying silently

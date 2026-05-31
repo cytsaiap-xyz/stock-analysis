@@ -54,7 +54,8 @@ def run(stock_no: str) -> str:
     bus.subscribe(collector)
     ledger = EvidenceLedger()
     llm = LLMClient(base_url=BASE_URL, api_key_env=API_KEY_ENV)
-    registry = build_registry(TwseClient(cache_dir=CACHE_DIR))
+    twse = TwseClient(cache_dir=CACHE_DIR)
+    registry = build_registry(twse)
     committee = build_committee()
     orch = Orchestrator(research=committee.research, challengers=committee.challengers,
                         chair=committee.chair, verifier=committee.verifier,
@@ -67,7 +68,7 @@ def run(stock_no: str) -> str:
                         correction_task_template=CORRECTION_TASK_TEMPLATE)
     verdict = orch.run(stock_no=stock_no, llm=llm, registry=registry,
                        bus=bus, ledger=ledger)
-    path = save_report(stock_no, collector, ledger=ledger)
+    path = save_report(stock_no, collector, ledger=ledger, twse=twse)
     print("\n[報告] 已存至: {}".format(path))
     return verdict
 
