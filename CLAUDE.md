@@ -108,10 +108,15 @@ OpenAI-compatible, so switching is just `base_url` + api-key env + model ids.
 - `LLM_PROVIDER` (`nvidia` *default* | `openrouter`) selects `BASE_URL` and `API_KEY_ENV`
   (`NVIDIA_API_KEY` vs `OPENROUTER_API_KEY`). `main.py`/`gui.py`/`web/server.py` all
   construct `LLMClient(base_url=BASE_URL, api_key_env=API_KEY_ENV)`.
-- `MODEL_TOOL_CALLER` — the 4 research analysts (need reliable tool-calling).
-- `MODEL_REASONER` — Chair, Risk, Skeptic, Verifier.
+- tool_caller tier — the 4 research analysts (need reliable tool-calling).
+- reasoner tier — Chair, Risk, Skeptic, Verifier.
 
-Per-provider defaults (override any with `MODEL_*` env):
+**Each provider keeps its own model config** via per-provider env vars
+`<PROVIDER>_MODEL_REASONER` / `<PROVIDER>_MODEL_TOOL_CALLER` (e.g.
+`OPENROUTER_MODEL_REASONER`, `NVIDIA_MODEL_TOOL_CALLER`). They **never leak across
+providers** — flipping `LLM_PROVIDER` automatically uses that provider's models.
+Unset → the provider's built-in default:
+
 | provider | tool_caller default | reasoner default |
 |---|---|---|
 | nvidia | `meta/llama-3.3-70b-instruct` | `moonshotai/kimi-k2.6` |
@@ -121,9 +126,10 @@ Per-provider defaults (override any with `MODEL_*` env):
 # .env — switch to OpenRouter free models
 LLM_PROVIDER=openrouter
 OPENROUTER_API_KEY=sk-or-...
-# optional model overrides (e.g. when the default :free models are 429 rate-limited)
-MODEL_TOOL_CALLER=openai/gpt-oss-120b:free
-MODEL_REASONER=nvidia/nemotron-3-super-120b-a12b:free
+# per-provider overrides (e.g. when the default :free models are 429 rate-limited)
+OPENROUTER_MODEL_TOOL_CALLER=openai/gpt-oss-120b:free
+OPENROUTER_MODEL_REASONER=moonshotai/kimi-k2.6:free
+# NVIDIA_MODEL_* would only ever apply when LLM_PROVIDER=nvidia
 ```
 ⚠️ **OpenRouter `:free` models are heavily contended** — popular ones (qwen3-coder,
 deepseek-v4-flash) frequently return 429 "rate-limited upstream", and free accounts

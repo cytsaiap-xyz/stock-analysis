@@ -27,20 +27,33 @@ def resolve(env: Mapping[str, str]) -> Dict[str, Any]:
     """Resolve provider connection + model tiers from an environment mapping.
 
     Pure (takes the env in) so it is testable without mutating os.environ.
-    MODEL_REASONER / MODEL_TOOL_CALLER override the provider's defaults.
+    Each provider keeps its own model config via per-provider env vars
+    (e.g. NVIDIA_MODEL_REASONER, OPENROUTER_MODEL_TOOL_CALLER); they never leak
+    across providers. Fall back to the provider's built-in default.
     """
     provider = env.get("LLM_PROVIDER", "nvidia").lower()
     if provider not in _PROVIDERS:
         raise ValueError("Unknown LLM_PROVIDER: {!r} (expected one of {})".format(
             provider, ", ".join(sorted(_PROVIDERS))))
     p = _PROVIDERS[provider]
+    pre = provider.upper()
+    # A model env may be a comma-separated list: first is primary, rest are
+    # fallbacks tried in order when the primary is unavailable (429/5xx/404).
+    reasoner = _models(env.get(pre + "_MODEL_REASONER") or p["reasoner"])
+    tool_caller = _models(env.get(pre + "_MODEL_TOOL_CALLER") or p["tool_caller"])
     return {
         "provider": provider,
         "base_url": p["base_url"],
         "api_key_env": p["api_key_env"],
-        "reasoner": env.get("MODEL_REASONER", p["reasoner"]),
-        "tool_caller": env.get("MODEL_TOOL_CALLER", p["tool_caller"]),
+        "reasoner": reasoner[0],
+        "reasoner_fallbacks": reasoner[1:],
+        "tool_caller": tool_caller[0],
+        "tool_caller_fallbacks": tool_caller[1:],
     }
+
+
+def _models(raw: str) -> list:
+    return [m.strip() for m in str(raw).split(",") if m.strip()]
 
 
 _R = resolve(os.environ)
@@ -49,6 +62,8 @@ BASE_URL = _R["base_url"]
 API_KEY_ENV = _R["api_key_env"]
 MODEL_REASONER = _R["reasoner"]
 MODEL_TOOL_CALLER = _R["tool_caller"]
+MODEL_REASONER_FALLBACKS = _R["reasoner_fallbacks"]
+MODEL_TOOL_CALLER_FALLBACKS = _R["tool_caller_fallbacks"]
 
 CACHE_DIR = os.environ.get("CACHE_DIR", "cache")
 

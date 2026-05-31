@@ -11,6 +11,13 @@ def _is_transient(exc: Exception) -> bool:
     return type(exc).__name__ in ("APITimeoutError", "APIConnectionError")
 
 
+def _should_try_next_model(exc: Exception) -> bool:
+    """Whether to fall back to the next model: transient (429/5xx/timeout) or a
+    404 (model unavailable). Non-transient client errors (auth, bad request) are
+    NOT masked by a fallback — they re-raise so the real problem surfaces."""
+    return _is_transient(exc) or getattr(exc, "status_code", None) == 404
+
+
 class LLMClient:
     """Model-agnostic wrapper over the NVIDIA OpenAI-compatible endpoint.
 
@@ -47,9 +54,9 @@ class LLMClient:
         max_tokens: int = 1024,
         max_retries: int = 3,
         backoff: float = 1.0,
+        fallback_models: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         kwargs: Dict[str, Any] = dict(
-            model=model,
             messages=messages,
             temperature=temperature,
             max_tokens=max_tokens,
@@ -59,18 +66,32 @@ class LLMClient:
             kwargs["tools"] = tools
             kwargs["tool_choice"] = "auto"
 
-        # Retry transient errors (429 / 5xx / timeouts) with exponential backoff.
-        # The NVIDIA free tier returns 504s under load; one shouldn't kill a run.
-        attempt = 0
-        while True:
-            try:
-                stream = self._client.chat.completions.create(**kwargs)
+        # Try the primary model, then each fallback in order. Per model, retry
+        # transient errors (429 / 5xx / timeouts) with exponential backoff; if a
+        # model is still unavailable (429/5xx/404), move to the next. Non-transient
+        # errors (auth, bad request) re-raise immediately — a fallback won't fix them.
+        models = [model] + list(fallback_models or [])
+        stream = None
+        last_exc: Optional[Exception] = None
+        for idx, mdl in enumerate(models):
+            attempt = 0
+            while True:
+                try:
+                    stream = self._client.chat.completions.create(model=mdl, **kwargs)
+                    break
+                except Exception as exc:
+                    last_exc = exc
+                    if attempt < max_retries and _is_transient(exc):
+                        time.sleep(backoff * (2 ** attempt))
+                        attempt += 1
+                        continue
+                    stream = None
+                    break
+            if stream is not None:
                 break
-            except Exception as exc:
-                if attempt >= max_retries or not _is_transient(exc):
-                    raise
-                time.sleep(backoff * (2 ** attempt))
-                attempt += 1
+            is_last = idx == len(models) - 1
+            if is_last or not _should_try_next_model(last_exc):
+                raise last_exc
         content_parts: List[str] = []
         acc: Dict[int, Dict[str, str]] = {}
 

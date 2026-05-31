@@ -21,6 +21,7 @@ class Agent:
     model: str
     tool_names: List[str] = field(default_factory=list)
     max_tool_rounds: int = 4
+    fallback_models: List[str] = field(default_factory=list)
 
     def run(self, task, llm, registry, bus, ledger, context: str = "") -> str:
         messages: List[Dict[str, Any]] = [{"role": "system", "content": self.system_prompt}]
@@ -36,7 +37,8 @@ class Agent:
 
         for _ in range(self.max_tool_rounds):
             assistant = llm.chat(model=self.model, messages=messages,
-                                 tools=tools_schema, on_token=on_token)
+                                 tools=tools_schema, on_token=on_token,
+                                 fallback_models=self.fallback_models)
             calls = assistant.get("tool_calls") or []
 
             if calls:

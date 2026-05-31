@@ -64,6 +64,59 @@ def test_passes_tools_and_tool_choice_when_tools_given():
     assert kwargs["tools"] == tools
 
 
+class _ModelRoutedCompletions:
+    """Raises a status error for models listed in `fail`; streams for the rest."""
+    def __init__(self, fail, status=429):
+        self._fail = set(fail)
+        self._status = status
+        self.used = []
+
+    def create(self, **kwargs):
+        m = kwargs["model"]
+        self.used.append(m)
+        if m in self._fail:
+            err = RuntimeError("boom"); err.status_code = self._status
+            raise err
+        return iter([_delta_chunk(content="ok from " + m)])
+
+
+def _routed(fail, status=429):
+    comp = _ModelRoutedCompletions(fail, status)
+    client = LLMClient(client=SimpleNamespace(chat=SimpleNamespace(completions=comp)))
+    return client, comp
+
+
+def test_chat_falls_back_to_next_model_on_transient_error():
+    client, comp = _routed({"primary"}, status=429)
+    msg = client.chat(model="primary", messages=[], fallback_models=["backup"],
+                      max_retries=0, backoff=0)
+    assert msg["content"] == "ok from backup"
+    assert comp.used == ["primary", "backup"]
+
+
+def test_chat_does_not_fall_back_on_non_transient_error():
+    client, comp = _routed({"primary"}, status=400)  # client error, not transient
+    with pytest.raises(Exception):
+        client.chat(model="primary", messages=[], fallback_models=["backup"],
+                    max_retries=0, backoff=0)
+    assert comp.used == ["primary"]            # never tried the backup
+
+
+def test_chat_falls_back_on_model_not_found_404():
+    client, comp = _routed({"primary"}, status=404)
+    msg = client.chat(model="primary", messages=[], fallback_models=["backup"],
+                      max_retries=0, backoff=0)
+    assert msg["content"] == "ok from backup"
+
+
+def test_chat_raises_when_all_models_fail():
+    client, comp = _routed({"primary", "backup"}, status=429)
+    with pytest.raises(Exception):
+        client.chat(model="primary", messages=[], fallback_models=["backup"],
+                    max_retries=0, backoff=0)
+    assert comp.used == ["primary", "backup"]
+
+
 def test_raises_when_no_key_and_no_client(monkeypatch):
     monkeypatch.delenv("NVIDIA_API_KEY", raising=False)
     with pytest.raises(RuntimeError, match="NVIDIA_API_KEY"):

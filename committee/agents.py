@@ -2,7 +2,8 @@ from dataclasses import dataclass
 from typing import List
 
 from agentcore.agent import Agent
-from committee.config import MODEL_REASONER, MODEL_TOOL_CALLER
+from committee.config import (MODEL_REASONER, MODEL_REASONER_FALLBACKS,
+                              MODEL_TOOL_CALLER, MODEL_TOOL_CALLER_FALLBACKS)
 
 _FUNDAMENTAL_PROMPT = (
     "你是一位專注台股的基本面分析師。請使用 get_valuation 取得本益比、股價淨值比與"
@@ -96,26 +97,26 @@ class Committee:
 
 def build_committee() -> Committee:
     fundamental = Agent(name="fundamental", role="Fundamental Analyst",
-                        system_prompt=_FUNDAMENTAL_PROMPT, model=MODEL_TOOL_CALLER,
+                        system_prompt=_FUNDAMENTAL_PROMPT, model=MODEL_TOOL_CALLER, fallback_models=MODEL_TOOL_CALLER_FALLBACKS,
                         tool_names=["get_valuation", "get_monthly_revenue",
                                     "get_financials"])
     technical = Agent(name="technical", role="Technical Analyst",
-                      system_prompt=_TECHNICAL_PROMPT, model=MODEL_TOOL_CALLER,
+                      system_prompt=_TECHNICAL_PROMPT, model=MODEL_TOOL_CALLER, fallback_models=MODEL_TOOL_CALLER_FALLBACKS,
                       tool_names=["get_technical_indicators", "get_relative_strength"])
     institutional = Agent(name="institutional", role="Institutional Flow Analyst",
-                          system_prompt=_INSTITUTIONAL_PROMPT, model=MODEL_TOOL_CALLER,
+                          system_prompt=_INSTITUTIONAL_PROMPT, model=MODEL_TOOL_CALLER, fallback_models=MODEL_TOOL_CALLER_FALLBACKS,
                           tool_names=["get_institutional_flows"])
     news = Agent(name="news", role="News Analyst",
-                 system_prompt=_NEWS_PROMPT, model=MODEL_TOOL_CALLER,
+                 system_prompt=_NEWS_PROMPT, model=MODEL_TOOL_CALLER, fallback_models=MODEL_TOOL_CALLER_FALLBACKS,
                  tool_names=["search_news"])
     risk = Agent(name="risk", role="Risk Manager",
-                 system_prompt=_RISK_PROMPT, model=MODEL_REASONER,
+                 system_prompt=_RISK_PROMPT, model=MODEL_REASONER, fallback_models=MODEL_REASONER_FALLBACKS,
                  tool_names=["get_risk_metrics"])
     skeptic = Agent(name="skeptic", role="Skeptic",
-                    system_prompt=_SKEPTIC_PROMPT, model=MODEL_REASONER, tool_names=[])
+                    system_prompt=_SKEPTIC_PROMPT, model=MODEL_REASONER, fallback_models=MODEL_REASONER_FALLBACKS, tool_names=[])
     chair = Agent(name="chair", role="Chair",
-                  system_prompt=_CHAIR_PROMPT, model=MODEL_REASONER, tool_names=[])
+                  system_prompt=_CHAIR_PROMPT, model=MODEL_REASONER, fallback_models=MODEL_REASONER_FALLBACKS, tool_names=[])
     verifier = Agent(name="verifier", role="Verifier",
-                     system_prompt=_VERIFIER_PROMPT, model=MODEL_REASONER, tool_names=[])
+                     system_prompt=_VERIFIER_PROMPT, model=MODEL_REASONER, fallback_models=MODEL_REASONER_FALLBACKS, tool_names=[])
     return Committee(research=[fundamental, technical, institutional, news],
                      challengers=[risk, skeptic], chair=chair, verifier=verifier)
