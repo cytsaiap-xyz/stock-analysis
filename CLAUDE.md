@@ -44,6 +44,12 @@ python scripts/spike_phase2.py               # T86, monthly revenue, ddgs news (
 python scripts/spike_phase3.py               # MI_5MINS_HIST (TAIEX), income stmt + balance sheet (Phase 3)
 ```
 
+Deterministic, **LLM-free** collector — pulls every analysis aspect for a stock from the
+committee data layer and dumps one JSON blob to stdout (feeds the workflow path below):
+```bash
+python scripts/collect_stock_data.py 2330 [months]   # default 6 months; per-aspect failures → {"error": ...}, never abort
+```
+
 ## Architecture — the load-bearing ideas
 
 ### Two layers, strictly separated
@@ -62,6 +68,21 @@ python scripts/spike_phase3.py               # MI_5MINS_HIST (TAIEX), income stm
 Anything market-specific (the word "Taiwan", agent names, tool function bodies) belongs
 in `committee/`. If you find domain language leaking into `agentcore/`, it's a bug —
 `tests/test_orchestrator.py::test_default_templates_are_domain_neutral` enforces this.
+
+### There is a second, JS-orchestrated analysis path (the Workflow skill)
+
+Besides the Python committee engine, `.claude/workflows/tw_stock_analyzed_workflow.js` is a
+Claude-Code **Workflow** (the `tw_stock_analyzed_workflow` skill) that runs an independent
+5-phase pipeline — 蒐集 (collect) → 分析 (7 aspects in parallel) → 合成 (Chair synthesizes an
+analyst-grade 繁中 Markdown note) → 驗證 (figure-grounding check, ±2% tolerance) → 定稿
+(one correction round only if ungrounded/contradictory figures are flagged). It deliberately
+**reuses the Python data layer** rather than re-collecting: the 蒐集 phase shells out to
+`scripts/collect_stock_data.py` and pastes its JSON verbatim as the single source of truth for
+every downstream agent. `args` accepts a stock-no string (`"2330"`), `{stock_no, months}`, or a
+pre-collected JSON object (presence of a `valuation` field → skip collection). This mirrors the
+committee's RESEARCH→…→VERIFY shape but in subagents instead of the `Orchestrator`; keep the two
+in sync conceptually (same grounding discipline: never invent numbers, "(推估)" is the only
+allowed unsourced figure, missing data is reported as "資料暫無").
 
 ### Everything flows through EventBus
 
