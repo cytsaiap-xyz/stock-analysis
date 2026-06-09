@@ -1,6 +1,6 @@
 # committee/markets/tw.py
 """Taiwan market profile: Chinese prompts, templates, tool descriptions, labels."""
-from committee.markets.base import Prompts, Templates, ToolDescriptions
+from committee.markets.base import Prompts, ReportLabels, Templates, ToolDescriptions
 
 
 def tw_prompts() -> Prompts:
@@ -106,3 +106,48 @@ def tw_tool_descriptions() -> ToolDescriptions:
         ),
         search_news="搜尋某主題的近期新聞標題與摘要(用於輿情分析)。",
     )
+
+
+_TW_TEXT = {
+    "eyebrow": "AI 投資委員會 · 個股研究報告",
+    "title": "個股研究報告",
+    "header_fallback": "台股個股分析",
+    "generated_at": "產出時間",
+    "rating": "投資評等", "confidence": "信心度", "last_close": "參考收盤",
+    "thesis": "投資論點摘要", "dashboard": "關鍵數據儀表板",
+    "chart": "近期股價走勢", "aspect": "分面分析",
+    "risk": "風險與空方觀點", "integrity": "資料完整性查核",
+    "integrity_support": "數據支持", "integrity_unsupported": "未獲數據支持(已標記)",
+    "card_valuation": "估值", "row_pe": "本益比 (PE)", "row_pb": "股價淨值比 (PB)",
+    "row_dy": "殖利率",
+    "card_financials": "獲利能力", "row_gm": "毛利率", "row_om": "營業利益率",
+    "row_roe": "ROE", "row_eps": "EPS",
+    "card_technical": "技術指標", "row_close": "收盤", "row_ma20": "MA20",
+    "row_rsi": "RSI14", "row_kd": "KD", "row_macd": "MACD", "row_chg": "期間漲跌",
+    "card_relative": "相對大盤", "row_stock_ret": "個股報酬",
+    "row_index_ret": "大盤報酬", "row_excess": "超額報酬", "row_beta": "Beta",
+    "card_institutional": "三大法人(張)", "row_foreign": "外資", "row_trust": "投信",
+    "row_dealer": "自營商", "row_total": "合計",
+    "card_risk": "風險", "row_vol": "年化波動率", "row_mdd": "最大回撤",
+    "card_revenue": "月營收", "row_rev": "當月營收", "row_yoy": "年增率 (YoY)",
+    "row_mom": "月增率 (MoM)",
+    "chart_caption": "收盤價 · MA20(虛線)", "chart_close": "收盤",
+}
+
+
+def tw_labels() -> ReportLabels:
+    return ReportLabels(
+        lang="zh-TW", text=_TW_TEXT,
+        rating_class={"買進": "buy", "持有": "hold", "賣出": "sell"},
+        recommend_label="建議", confidence_label="信心",
+        agent_names={"fundamental": "基本面分析師", "technical": "技術面分析師",
+                     "institutional": "籌碼面分析師", "news": "新聞輿情分析師",
+                     "risk": "風險經理", "skeptic": "唱反調者", "chair": "主席",
+                     "verifier": "查核員", "system": "系統"},
+        phase_names={"RESEARCH": "研究分析", "CHALLENGE": "質詢", "REBUTTAL": "答辯",
+                     "VERDICT": "最終結論", "REFLECT": "自我反省", "VERIFY": "自我查核"},
+        aspect_order=[("fundamental", "基本面分析"), ("technical", "技術面分析"),
+                      ("institutional", "籌碼面分析"), ("news", "新聞輿情分析")],
+        institutional_kind="lots", revenue_kind="monthly",
+        disclaimer=("免責聲明:本報告由 AI 投資委員會自動產生,所有數據取自公開資料來源(TWSE 等),"
+                    "僅供研究與技術展示參考,不構成任何投資建議或要約。投資人應自行判斷並承擔風險。"))
