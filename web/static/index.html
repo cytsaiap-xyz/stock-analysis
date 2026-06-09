@@ -1,31 +1,35 @@
 <!DOCTYPE html>
-<html lang="zh-TW">
+<html lang="zh-TW" id="html-root">
 <head>
 <meta charset="utf-8">
-<title>台股投資委員會 — Agentic AI</title>
+<title id="page-title">Agentic Investment Committee</title>
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
 <header>
-  <h1>台股投資委員會 <span class="sub">Agentic AI (7 位委員 + 自我查核)</span></h1>
+  <h1 id="title">Agentic Investment Committee <span class="sub" id="subtitle"></span></h1>
   <div class="controls">
-    <label>股票代號:</label>
+    <div class="market-switch">
+      <label><input type="radio" name="market" value="tw" checked> TW</label>
+      <label><input type="radio" name="market" value="us"> US</label>
+    </div>
+    <label id="ticker-label">股票代號:</label>
     <input id="ticker" type="text" value="2330" maxlength="6">
     <button id="run">開始分析</button>
   </div>
 </header>
 
-<section id="verdict">結論:(請先執行分析)</section>
+<section id="verdict"></section>
 <section id="verify" class="hidden"></section>
-<section id="status">● 閒置</section>
+<section id="status"></section>
 
 <main>
   <aside id="pipeline">
-    <h2>執行流程 Pipeline</h2>
-    <div id="cards">載入委員會資訊中...</div>
+    <h2 id="pipeline-heading">Pipeline</h2>
+    <div id="cards">…</div>
   </aside>
   <article id="feed">
-    <h2>即時討論 Live debate</h2>
+    <h2 id="debate-heading">Live debate</h2>
     <div id="messages"></div>
   </article>
 </main>
