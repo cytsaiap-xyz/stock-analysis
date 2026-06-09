@@ -113,7 +113,10 @@ class UsClient:
         for i, col in enumerate(cols):
             rev = _f(row[col])
             prior = _f(row[cols[i + 4]]) if i + 4 < len(cols) else None
-            period = col.strftime("%YQ%q") if hasattr(col, "strftime") else str(col)
+            if hasattr(col, "quarter"):  # pandas Timestamp/Period has .year/.quarter
+                period = "{}Q{}".format(col.year, col.quarter)
+            else:
+                period = str(col)
             out.append((period, rev, prior))
         return out
 
