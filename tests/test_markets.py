@@ -27,3 +27,31 @@ def test_dataclasses_construct_with_expected_fields():
                           institutional_kind="ownership", revenue_kind="quarterly",
                           disclaimer="d")
     assert labels.institutional_kind == "ownership"
+
+
+from committee.markets import get_profile
+
+
+def test_get_profile_tw_is_chinese_with_twse_client():
+    p = get_profile("tw")
+    assert p.market == "tw" and p.lang == "zh-TW"
+    assert p.labels.institutional_kind == "lots"
+    assert type(p.client).__name__ == "TwseClient"
+    assert [a.name for a in p.committee.research] == ["fundamental", "technical",
+                                                      "institutional", "news"]
+
+
+def test_get_profile_us_is_english_with_us_client():
+    p = get_profile("us")
+    assert p.market == "us" and p.lang == "en"
+    assert p.labels.institutional_kind == "ownership"
+    assert p.labels.revenue_kind == "quarterly"
+    assert type(p.client).__name__ == "UsClient"
+    assert "Recommendation" in p.committee.chair.system_prompt
+    assert p.templates.analyst.find("{stock}") >= 0
+
+
+def test_get_profile_unknown_market_raises():
+    import pytest
+    with pytest.raises(ValueError):
+        get_profile("jp")
