@@ -38,6 +38,23 @@ python -m uvicorn web.server:app             # web → http://localhost:8000
 ./start-web.sh   # or  .\start-web.ps1       # web launcher (HOST/PORT overridable)
 ```
 
+## Markets — Taiwan and US, auto-detected
+
+The same commands accept either a **Taiwan** code or a **US** ticker — the market is
+inferred from the symbol (4–6 digits → TW, e.g. `2330`; letters → US, e.g. `AAPL`):
+
+```bash
+python main.py 2330      # Taiwan — report in 繁體中文, data from TWSE
+python main.py AAPL      # US — report in English, data from Yahoo Finance + SEC EDGAR
+```
+
+TW reports are written in Traditional Chinese; US reports in English. US fundamentals
+come from SEC EDGAR (XBRL company facts) and prices/ownership/quarterly revenue from
+Yahoo Finance (`yfinance`), with relative strength measured against the S&P 500. Two
+TW-only analysts are substituted for US: institutional **flows** → institutional
+**ownership %** + top holders, and **monthly** revenue → latest **quarterly** revenue
+& YoY. Everything else (the 7-agent debate, grounding, the report layout) is shared.
+
 ## How it works
 
 The committee runs a structured debate orchestrated as a phase pipeline:
