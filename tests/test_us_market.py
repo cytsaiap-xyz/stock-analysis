@@ -116,3 +116,34 @@ def test_institutional_flows_missing_data_is_graceful():
     c = UsClient(cache_dir=tempfile.mkdtemp(), yf=_Empty())
     out = c.institutional_flows("AAPL")
     assert out["available"] is False
+
+
+class _FakeTickerRevenue(_FakeTicker):
+    def get_quarterly_revenue(self):
+        # most-recent first: [(period, revenue, year-ago revenue)]
+        return [("2026Q1", 95_000_000_000.0, 81_000_000_000.0)]
+
+
+class _FakeYfRevenue(_FakeYf):
+    def Ticker(self, symbol):
+        return _FakeTickerRevenue(symbol)
+
+
+def test_monthly_revenue_returns_latest_quarter_and_yoy():
+    c = UsClient(cache_dir=tempfile.mkdtemp(), yf=_FakeYfRevenue())
+    out = c.monthly_revenue("AAPL")
+    assert out["available"] is True
+    assert out["period"] == "2026Q1"
+    assert out["revenue"] == 95_000_000_000.0
+    # (95 - 81) / 81 * 100 = 17.28%
+    assert abs(out["yoy_pct"] - 17.2840) < 1e-3
+
+
+def test_monthly_revenue_missing_is_graceful():
+    class _Empty(_FakeYf):
+        def Ticker(self, symbol):
+            t = _FakeTicker(symbol)
+            t.get_quarterly_revenue = lambda: []
+            return t
+    out = UsClient(cache_dir=tempfile.mkdtemp(), yf=_Empty()).monthly_revenue("AAPL")
+    assert out["available"] is False

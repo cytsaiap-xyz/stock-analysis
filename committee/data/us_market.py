@@ -93,6 +93,42 @@ class UsClient:
         rows = self._cache(key, lambda: self._history("^GSPC", months))
         return [{"date": r["date"], "close": r["close"]} for r in rows]
 
+    def _quarterly_revenue(self, ticker: Any):
+        """Return [(period_str, revenue, year_ago_revenue)], most-recent first.
+
+        Tests inject `ticker.get_quarterly_revenue`; production reads
+        yfinance's quarterly_income_stmt (Total Revenue row, newest column
+        first) and pairs each quarter with the one 4 quarters earlier."""
+        if hasattr(ticker, "get_quarterly_revenue"):
+            return ticker.get_quarterly_revenue()
+        stmt = getattr(ticker, "quarterly_income_stmt", None)
+        if stmt is None or getattr(stmt, "empty", True):
+            return []
+        try:
+            row = stmt.loc["Total Revenue"]
+        except Exception:
+            return []
+        cols = list(row.index)  # newest first
+        out = []
+        for i, col in enumerate(cols):
+            rev = _f(row[col])
+            prior = _f(row[cols[i + 4]]) if i + 4 < len(cols) else None
+            period = col.strftime("%YQ%q") if hasattr(col, "strftime") else str(col)
+            out.append((period, rev, prior))
+        return out
+
+    def monthly_revenue(self, stock_no: str) -> Dict[str, Any]:
+        def build():
+            rows = self._quarterly_revenue(self._yfinance().Ticker(stock_no))
+            if not rows:
+                return {"stock_no": stock_no, "available": False,
+                        "note": "Quarterly revenue data unavailable"}
+            period, rev, prior = rows[0]
+            yoy = round((rev - prior) / prior * 100, 4) if (rev is not None and prior) else None
+            return {"stock_no": stock_no, "available": True, "period": period,
+                    "revenue": rev, "yoy_pct": yoy}
+        return self._cache("us_qrev_{}_{}".format(stock_no, self._today.strftime("%Y%m")), build)
+
     def institutional_flows(self, stock_no: str) -> Dict[str, Any]:
         def build():
             t = self._yfinance().Ticker(stock_no)
