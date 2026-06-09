@@ -151,3 +151,43 @@ def tw_labels() -> ReportLabels:
         institutional_kind="lots", revenue_kind="monthly",
         disclaimer=("免責聲明:本報告由 AI 投資委員會自動產生,所有數據取自公開資料來源(TWSE 等),"
                     "僅供研究與技術展示參考,不構成任何投資建議或要約。投資人應自行判斷並承擔風險。"))
+
+
+def tw_ui() -> dict:
+    return {
+        "title": "台股投資委員會",
+        "subtitle": "Agentic AI (7 位委員 + 自我查核)",
+        "ticker_label": "股票代號:",
+        "example_ticker": "2330",
+        "run_button": "開始分析",
+        "running_button": "分析中...",
+        "idle": "● 閒置",
+        "done_idle": "● 閒置 — 已完成",
+        "pipeline_heading": "執行流程 Pipeline",
+        "debate_heading": "即時討論 Live debate",
+        "verdict_placeholder": "結論:(請先執行分析)",
+        "verdict_prefix": "結論:",
+        "verdict_running": "結論:分析 {stock} 中...",
+        "verdict_done": "結論完成 ✓",
+        "start_status": "開始分析 {stock} ...",
+        "pending_badge": "⏳ 等待",
+        "running_badge": "▶ 進行中",
+        "done_badge": "✓ 完成",
+        "thinking": "思考中",
+        "writing": "撰寫中",
+        "calling": "呼叫",
+        "received": "已取得",
+        "model_label": "模型: ",
+        "tools_label": "工具: ",
+        "tool_word": "工具",
+        "done_word": "完成",
+        "warn_word": "警告",
+        "verify_prefix": "自我查核:數據支持",
+        "unsupported_word": "未支持",
+        "report_saved": "📄 報告已存",
+        "open_report": "→ 開啟報告",
+        "ws_error": "⚠ WebSocket 錯誤",
+        "load_failed": "載入失敗: ",
+        "recommend_word": "建議",
+        "lean_words": ["看多", "看空", "中性"],
+    }

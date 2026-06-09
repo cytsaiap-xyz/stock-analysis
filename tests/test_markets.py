@@ -55,3 +55,17 @@ def test_get_profile_unknown_market_raises():
     import pytest
     with pytest.raises(ValueError):
         get_profile("jp")
+
+
+def test_profiles_carry_localized_ui_text():
+    from committee.markets import get_profile
+    tw = get_profile("tw").ui
+    us = get_profile("us").ui
+    assert set(tw) == set(us)
+    assert tw["title"] == "台股投資委員會"
+    assert us["title"] == "US Equity Investment Committee"
+    assert tw["example_ticker"] == "2330" and us["example_ticker"] == "AAPL"
+    assert tw["run_button"] == "開始分析" and us["run_button"] == "Analyze"
+    assert tw["thinking"] == "思考中" and us["thinking"] == "thinking"
+    assert tw["lean_words"] == ["看多", "看空", "中性"]
+    assert us["lean_words"] == ["Bullish", "Bearish", "Neutral"]

@@ -73,3 +73,4 @@ class MarketProfile:
     templates: Templates
     labels: ReportLabels
     descriptions: ToolDescriptions
+    ui: Dict[str, str]
