@@ -6,19 +6,6 @@ from committee.config import (MODEL_REASONER, MODEL_REASONER_FALLBACKS,
                               MODEL_TOOL_CALLER, MODEL_TOOL_CALLER_FALLBACKS)
 from committee.markets.base import Prompts
 
-# Re-export TW templates at module level for backward-compat with gui.py / web/server.py.
-# (These are wired to TW defaults; a later task will update those front-ends to use
-# MarketProfile.templates directly.)
-from committee.markets.tw import tw_templates as _tw_templates
-_tw = _tw_templates()
-ANALYST_TASK_TEMPLATE = _tw.analyst
-CHALLENGE_TASK_TEMPLATE = _tw.challenge
-REBUTTAL_TASK_TEMPLATE = _tw.rebuttal
-REFLECT_TASK_TEMPLATE = _tw.reflect
-VERIFY_TASK_TEMPLATE = _tw.verify
-CORRECTION_TASK_TEMPLATE = _tw.correction
-del _tw, _tw_templates
-
 
 @dataclass
 class Committee:
