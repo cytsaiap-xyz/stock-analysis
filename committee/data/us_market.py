@@ -22,15 +22,17 @@ def _f(v: Any) -> Optional[float]:
 
 
 def _norm_yield(raw: Any) -> Optional[float]:
-    """yfinance returns dividendYield as a fraction (0.0045) or percent (0.45)
-    depending on version. Normalize to a percent to match TW's field meaning."""
+    """Current yfinance (>=0.2.40 / 1.x) returns ``dividendYield`` already as a
+    percent (e.g. 0.36 for a 0.36% yield), matching TW's field meaning, so we
+    pass it through. A clearly-fractional value (<= 0.01, i.e. an older-style
+    0.0034) is scaled to a percent for safety."""
     if raw is None:
         return None
     try:
         v = float(raw)
     except (TypeError, ValueError):
         return None
-    return round(v * 100, 4) if v < 1 else round(v, 4)
+    return round(v * 100, 4) if 0 < v <= 0.01 else round(v, 4)
 
 
 class UsClient:
@@ -132,12 +134,25 @@ class UsClient:
                     "revenue": rev, "yoy_pct": yoy}
         return self._cache("us_qrev_{}_{}".format(stock_no, self._today.strftime("%Y%m")), build)
 
+    @staticmethod
+    def _holder_rows(raw: Any) -> List[Dict[str, Any]]:
+        """yfinance's get_institutional_holders() returns a pandas DataFrame in
+        production but the tests inject a plain list of dicts. Normalize both to
+        a list of row dicts (with 'Holder'/'pctHeld' keys)."""
+        if raw is None:
+            return []
+        if hasattr(raw, "to_dict"):  # pandas DataFrame
+            if getattr(raw, "empty", False):
+                return []
+            return raw.to_dict("records")
+        return list(raw)
+
     def institutional_flows(self, stock_no: str) -> Dict[str, Any]:
         def build():
             t = self._yfinance().Ticker(stock_no)
             info = t.info or {}
             pct = info.get("heldPercentInstitutions")
-            holders = t.get_institutional_holders() or []
+            holders = self._holder_rows(t.get_institutional_holders())
             top = [{"holder": h.get("Holder"), "pct": round(float(h.get("pctHeld")) * 100, 4)}
                    for h in holders if h.get("pctHeld") is not None][:5]
             if pct is None and not top:
@@ -163,39 +178,61 @@ class UsClient:
             if cik is None:
                 return {"stock_no": stock_no, "available": False,
                         "note": "Ticker not found in SEC EDGAR"}
-            resp = self._session.get(
-                _EDGAR + "/api/xbrl/companyfacts/CIK{}.json".format(cik),
-                headers=_HEADERS, timeout=20)
-            resp.raise_for_status()
-            facts = (resp.json() or {}).get("facts", {}).get("us-gaap", {})
-
-            def latest(tag, unit="USD"):
-                series = facts.get(tag, {}).get("units", {}).get(unit, [])
-                if not series:
-                    return None, None
-                row = sorted(series, key=lambda r: r.get("end", ""))[-1]
-                return _f(row.get("val")), row
-
-            revenue, rev_row = latest("Revenues")
-            if revenue is None:
-                revenue, rev_row = latest("RevenueFromContractWithCustomerExcludingAssessedTax")
-            gross, _ = latest("GrossProfit")
-            operating, _ = latest("OperatingIncomeLoss")
-            net, _ = latest("NetIncomeLoss")
-            equity, _ = latest("StockholdersEquity")
-            eps, _ = latest("EarningsPerShareBasic", "USD/shares")
-            if revenue is None and net is None:
+            try:
+                resp = self._session.get(
+                    _EDGAR + "/api/xbrl/companyfacts/CIK{}.json".format(cik),
+                    headers=_HEADERS, timeout=20)
+                resp.raise_for_status()
+                body = resp.json() or {}
+            except Exception as exc:  # network/parse errors are "data unavailable"
                 return {"stock_no": stock_no, "available": False,
-                        "note": "No us-gaap financial facts available"}
-            period = ""
-            if rev_row:
-                period = "{}{}".format(rev_row.get("fy", ""), rev_row.get("fp", ""))
+                        "note": "EDGAR request failed: {}".format(exc)}
+            facts = body.get("facts", {}).get("us-gaap", {})
+            name = body.get("entityName") or stock_no
+
+            def series(tag, unit="USD"):
+                return [r for r in facts.get(tag, {}).get("units", {}).get(unit, [])
+                        if r.get("val") is not None and r.get("end")]
+
+            # Revenue: newest entry across the modern and legacy tags. Companies
+            # migrate from "Revenues" to "RevenueFromContract...", so the legacy
+            # tag can be years stale — pick by latest end date, not tag priority.
+            rev_series = (series("RevenueFromContractWithCustomerExcludingAssessedTax")
+                          + series("Revenues"))
+            if not rev_series:
+                return {"stock_no": stock_no, "available": False,
+                        "note": "No us-gaap revenue facts available"}
+            rev_row = sorted(rev_series, key=lambda r: (r["end"], r.get("start", "")))[-1]
+            end, start = rev_row["end"], rev_row.get("start")
+            revenue = _f(rev_row["val"])
+
+            def matched(tag, unit="USD"):
+                """Value aligned to revenue's period: same (start,end) span if
+                present (so margins compare like-for-like), else same end date
+                (for instant values like equity), else the latest available."""
+                ser = series(tag, unit)
+                if not ser:
+                    return None
+                same_span = [r for r in ser if r["end"] == end and r.get("start") == start]
+                if same_span:
+                    return _f(same_span[-1]["val"])
+                same_end = [r for r in ser if r["end"] == end]
+                if same_end:
+                    return _f(same_end[-1]["val"])
+                return _f(sorted(ser, key=lambda r: r["end"])[-1]["val"])
+
+            gross = matched("GrossProfit")
+            operating = matched("OperatingIncomeLoss")
+            net = matched("NetIncomeLoss")
+            equity = matched("StockholdersEquity")
+            eps = matched("EarningsPerShareBasic", "USD/shares")
+            period = "{}{}".format(rev_row.get("fy", ""), rev_row.get("fp", ""))
 
             def pct(num, den):
                 return round(num / den * 100, 2) if (num is not None and den) else None
 
             return {"stock_no": stock_no, "available": True,
-                    "name": stock_no, "period": period, "revenue": revenue,
+                    "name": name, "period": period, "revenue": revenue,
                     "gross_margin_pct": pct(gross, revenue),
                     "operating_margin_pct": pct(operating, revenue),
                     "net_income": net, "roe_pct": pct(net, equity), "eps": eps,

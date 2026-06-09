@@ -202,3 +202,82 @@ def test_financials_unknown_ticker_is_graceful():
     c = UsClient(cache_dir=tempfile.mkdtemp(), yf=_FakeYf(), session=_FakeEdgarSession())
     out = c.financials("ZZZZ")
     assert out["available"] is False
+
+
+# --- Regression tests for production shapes surfaced by live data ---
+
+def test_institutional_flows_handles_dataframe_from_real_yfinance():
+    """Production yfinance returns get_institutional_holders() as a DataFrame
+    (not a list); pct/ownership must still parse without a truth-value error."""
+    import pandas as pd
+
+    class _DFTicker(_FakeTicker):
+        def __init__(self, symbol):
+            super().__init__(symbol)
+            self.info = {"longName": "Apple Inc.", "heldPercentInstitutions": 0.658}
+
+        def get_institutional_holders(self):
+            return pd.DataFrame([
+                {"Holder": "Blackrock Inc.", "pctHeld": 0.0779},
+                {"Holder": "Vanguard", "pctHeld": 0.0649}])
+
+    class _DFYf(_FakeYf):
+        def Ticker(self, symbol):
+            return _DFTicker(symbol)
+
+    out = UsClient(cache_dir=tempfile.mkdtemp(), yf=_DFYf()).institutional_flows("AAPL")
+    assert out["available"] is True
+    assert abs(out["inst_ownership_pct"] - 65.8) < 1e-6
+    assert out["top_holders"][0] == {"holder": "Blackrock Inc.", "pct": 7.79}
+
+
+def test_valuation_passes_through_modern_percent_yield():
+    """yfinance 1.x returns dividendYield already as a percent (0.36 -> 0.36%),
+    so a sub-1 value that isn't tiny must NOT be multiplied by 100."""
+    class _PctTicker(_FakeTicker):
+        def __init__(self, symbol):
+            super().__init__(symbol)
+            self.info = {"longName": "Apple Inc.", "trailingPE": 35.0,
+                         "priceToBook": 40.0, "dividendYield": 0.36}
+
+    class _PctYf(_FakeYf):
+        def Ticker(self, symbol):
+            return _PctTicker(symbol)
+
+    out = UsClient(cache_dir=tempfile.mkdtemp(), yf=_PctYf()).valuation("AAPL")
+    assert out["dividend_yield"] == 0.36
+
+
+class _FakeEdgarStaleRevenue:
+    """EDGAR session where the legacy 'Revenues' tag is years stale (2018) and
+    current figures live under 'RevenueFromContractWithCustomerExcludingAssessedTax'
+    (the real Apple situation). financials() must pick the newest revenue."""
+    def __init__(self):
+        self.tickers = {"0": {"cik_str": 320193, "ticker": "AAPL", "title": "Apple Inc."}}
+        span = {"start": "2025-12-28", "end": "2026-03-28", "form": "10-Q", "fp": "Q2", "fy": 2026}
+        old = {"start": "2018-07-01", "end": "2018-09-29", "form": "10-K", "fp": "FY", "fy": 2018}
+        self.facts = {"entityName": "Apple Inc.", "facts": {"us-gaap": {
+            "Revenues": {"units": {"USD": [dict(old, val=62900000000)]}},
+            "RevenueFromContractWithCustomerExcludingAssessedTax": {"units": {"USD": [
+                dict(span, val=111184000000)]}},
+            "GrossProfit": {"units": {"USD": [dict(span, val=54781000000)]}},
+            "OperatingIncomeLoss": {"units": {"USD": [dict(span, val=35885000000)]}},
+            "NetIncomeLoss": {"units": {"USD": [dict(span, val=29578000000)]}},
+            "StockholdersEquity": {"units": {"USD": [{"end": "2026-03-28", "val": 66000000000,
+                                                      "form": "10-Q", "fp": "Q2", "fy": 2026}]}},
+            "EarningsPerShareBasic": {"units": {"USD/shares": [dict(span, val=1.97)]}},
+        }}}
+
+    def get(self, url, headers=None, timeout=None):
+        return _FakeResp(self.tickers if "company_tickers" in url else self.facts)
+
+
+def test_financials_picks_newest_revenue_tag_not_stale_legacy():
+    c = UsClient(cache_dir=tempfile.mkdtemp(), yf=_FakeYf(), session=_FakeEdgarStaleRevenue())
+    out = c.financials("AAPL")
+    assert out["available"] is True
+    assert out["revenue"] == 111184000000          # 2026 Q2, not stale 2018 62.9B
+    assert out["period"] == "2026Q2"
+    assert out["name"] == "Apple Inc."
+    assert abs(out["gross_margin_pct"] - 49.27) < 0.1   # 54.781/111.184
+    assert abs(out["operating_margin_pct"] - 32.28) < 0.1
