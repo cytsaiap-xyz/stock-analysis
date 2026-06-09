@@ -2,7 +2,7 @@
 """Market routing: detect a symbol's market and build its MarketProfile."""
 import re
 
-_TW_RE = re.compile(r"^\d{4,6}(\.TWO?|\.TW)?$")
+_TW_RE = re.compile(r"^\d{4,6}(\.TWO?)?$")
 
 
 def detect_market(symbol: str) -> str:
