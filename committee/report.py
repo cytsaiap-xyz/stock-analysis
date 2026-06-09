@@ -35,7 +35,8 @@ _TOOL_BUCKET = {
     "get_relative_strength": "relative", "get_risk_metrics": "risk",
     "get_monthly_revenue": "revenue",
 }
-_RATING_CLASS = {"買進": "buy", "持有": "hold", "賣出": "sell"}
+_RATING_CLASS = {"買進": "buy", "持有": "hold", "賣出": "sell",
+                 "BUY": "buy", "HOLD": "hold", "SELL": "sell"}
 _DISCLAIMER = (
     "免責聲明:本報告由 AI 投資委員會自動產生,所有數據取自公開資料來源(TWSE 等),"
     "僅供研究與技術展示參考,不構成任何投資建議或要約。投資人應自行判斷並承擔風險。"
@@ -79,11 +80,13 @@ def _metrics(ledger: Any) -> Dict[str, Dict[str, Any]]:
 def _rating(verdict_text: str) -> Dict[str, str]:
     text = verdict_text or ""
     rating = {"label": "—", "cls": "na", "confidence": ""}
-    m = re.search(r"建議\s*[:：]\s*([買進持有賣出]+)", text)
+    m = re.search(r"(?:建議|Recommendation)\s*[:：]\s*([買進持有賣出]+|BUY|HOLD|SELL)",
+                  text, re.IGNORECASE)
     if m:
-        rating["label"] = m.group(1)
-        rating["cls"] = _RATING_CLASS.get(m.group(1), "na")
-    c = re.search(r"信心\s*[:：]\s*([0-9]{1,3})\s*%", text)
+        label = m.group(1).upper() if m.group(1).isascii() else m.group(1)
+        rating["label"] = label
+        rating["cls"] = _RATING_CLASS.get(label, "na")
+    c = re.search(r"(?:信心|Confidence)\s*[:：]\s*([0-9]{1,3})\s*%", text, re.IGNORECASE)
     if c:
         rating["confidence"] = c.group(1) + "%"
     return rating
