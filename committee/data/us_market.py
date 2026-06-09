@@ -145,3 +145,56 @@ class UsClient:
                     "inst_ownership_pct": round(float(pct) * 100, 4) if pct is not None else None,
                     "top_holders": top}
         return self._cache("us_inst_{}_{}".format(stock_no, self._today.strftime("%Y%m%d")), build)
+
+    def _cik(self, stock_no: str) -> Optional[str]:
+        body = self._cache("us_cik_map", lambda: self._session.get(
+            _EDGAR_TICKERS, headers=_HEADERS, timeout=20).json())
+        for row in (body or {}).values():
+            if str(row.get("ticker", "")).upper() == stock_no.upper():
+                return "{:010d}".format(int(row["cik_str"]))
+        return None
+
+    def financials(self, stock_no: str) -> Dict[str, Any]:
+        def build():
+            cik = self._cik(stock_no)
+            if cik is None:
+                return {"stock_no": stock_no, "available": False,
+                        "note": "Ticker not found in SEC EDGAR"}
+            resp = self._session.get(
+                _EDGAR + "/api/xbrl/companyfacts/CIK{}.json".format(cik),
+                headers=_HEADERS, timeout=20)
+            resp.raise_for_status()
+            facts = (resp.json() or {}).get("facts", {}).get("us-gaap", {})
+
+            def latest(tag, unit="USD"):
+                series = facts.get(tag, {}).get("units", {}).get(unit, [])
+                if not series:
+                    return None, None
+                row = sorted(series, key=lambda r: r.get("end", ""))[-1]
+                return _f(row.get("val")), row
+
+            revenue, rev_row = latest("Revenues")
+            if revenue is None:
+                revenue, rev_row = latest("RevenueFromContractWithCustomerExcludingAssessedTax")
+            gross, _ = latest("GrossProfit")
+            operating, _ = latest("OperatingIncomeLoss")
+            net, _ = latest("NetIncomeLoss")
+            equity, _ = latest("StockholdersEquity")
+            eps, _ = latest("EarningsPerShareBasic", "USD/shares")
+            if revenue is None and net is None:
+                return {"stock_no": stock_no, "available": False,
+                        "note": "No us-gaap financial facts available"}
+            period = ""
+            if rev_row:
+                period = "{}{}".format(rev_row.get("fy", ""), rev_row.get("fp", ""))
+
+            def pct(num, den):
+                return round(num / den * 100, 2) if (num is not None and den) else None
+
+            return {"stock_no": stock_no, "available": True,
+                    "name": stock_no, "period": period, "revenue": revenue,
+                    "gross_margin_pct": pct(gross, revenue),
+                    "operating_margin_pct": pct(operating, revenue),
+                    "net_income": net, "roe_pct": pct(net, equity), "eps": eps,
+                    "book_value_per_share": None}
+        return self._cache("us_fin_{}_{}".format(stock_no, self._today.strftime("%Y%m")), build)

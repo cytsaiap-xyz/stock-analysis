@@ -147,3 +147,58 @@ def test_monthly_revenue_missing_is_graceful():
             return t
     out = UsClient(cache_dir=tempfile.mkdtemp(), yf=_Empty()).monthly_revenue("AAPL")
     assert out["available"] is False
+
+
+class _FakeEdgarSession:
+    """Returns canned JSON for the two EDGAR URLs UsClient calls."""
+    def __init__(self):
+        self.tickers = {"0": {"cik_str": 320193, "ticker": "AAPL", "title": "Apple Inc."}}
+        self.facts = {
+            "entityName": "Apple Inc.",
+            "facts": {"us-gaap": {
+                "Revenues": {"units": {"USD": [
+                    {"end": "2026-03-31", "val": 95000000000, "form": "10-Q", "fp": "Q1", "fy": 2026}]}},
+                "GrossProfit": {"units": {"USD": [
+                    {"end": "2026-03-31", "val": 42000000000, "form": "10-Q", "fp": "Q1", "fy": 2026}]}},
+                "OperatingIncomeLoss": {"units": {"USD": [
+                    {"end": "2026-03-31", "val": 30000000000, "form": "10-Q", "fp": "Q1", "fy": 2026}]}},
+                "NetIncomeLoss": {"units": {"USD": [
+                    {"end": "2026-03-31", "val": 24000000000, "form": "10-Q", "fp": "Q1", "fy": 2026}]}},
+                "StockholdersEquity": {"units": {"USD": [
+                    {"end": "2026-03-31", "val": 80000000000, "form": "10-Q", "fp": "Q1", "fy": 2026}]}},
+                "EarningsPerShareBasic": {"units": {"USD/shares": [
+                    {"end": "2026-03-31", "val": 1.5, "form": "10-Q", "fp": "Q1", "fy": 2026}]}},
+            }},
+        }
+
+    def get(self, url, headers=None, timeout=None):
+        body = self.tickers if "company_tickers" in url else self.facts
+        return _FakeResp(body)
+
+
+class _FakeResp:
+    def __init__(self, body):
+        self._body = body
+
+    def raise_for_status(self):
+        pass
+
+    def json(self):
+        return self._body
+
+
+def test_financials_from_edgar_computes_margins_and_roe():
+    c = UsClient(cache_dir=tempfile.mkdtemp(), yf=_FakeYf(), session=_FakeEdgarSession())
+    out = c.financials("AAPL")
+    assert out["available"] is True
+    assert out["revenue"] == 95000000000
+    assert abs(out["gross_margin_pct"] - 44.21) < 0.1     # 42/95
+    assert abs(out["operating_margin_pct"] - 31.58) < 0.1  # 30/95
+    assert abs(out["roe_pct"] - 30.0) < 0.1                # 24/80
+    assert out["eps"] == 1.5
+
+
+def test_financials_unknown_ticker_is_graceful():
+    c = UsClient(cache_dir=tempfile.mkdtemp(), yf=_FakeYf(), session=_FakeEdgarSession())
+    out = c.financials("ZZZZ")
+    assert out["available"] is False
