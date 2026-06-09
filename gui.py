@@ -21,10 +21,9 @@ from agentcore.evidence import EvidenceLedger
 from agentcore.llm import LLMClient
 from agentcore.orchestrator import Orchestrator
 from agentcore.report import ReportCollector
-from committee.agents import build_committee
 from committee.config import API_KEY_ENV, BASE_URL, REFLECTION_PASSES
 from committee.domain_tools import build_registry
-from committee.markets import detect_market, get_profile
+from committee.markets import get_profile
 from committee.report import save_report
 
 AGENT_COLORS = {
@@ -38,21 +37,6 @@ AGENT_COLORS = {
     "verifier": "#0a7ea4",
     "system": "#6e7681",
 }
-AGENT_ZH = {
-    "fundamental": "基本面分析師",
-    "technical": "技術面分析師",
-    "institutional": "籌碼面分析師",
-    "news": "新聞輿情分析師",
-    "risk": "風險經理",
-    "skeptic": "唱反調者",
-    "chair": "主席",
-    "verifier": "查核員",
-    "system": "系統",
-}
-PHASE_ZH = {"RESEARCH": "研究分析", "CHALLENGE": "質詢",
-            "REBUTTAL": "答辯", "VERDICT": "最終結論",
-            "REFLECT": "自我反省", "VERIFY": "自我查核"}
-
 _PENDING = ("⏳ 等待", "#6e7681")
 _RUNNING = ("▶ 進行中", "#1f6feb")
 _DLDONE = ("✓ 完成", "#2ea043")
@@ -60,45 +44,50 @@ _DLDONE = ("✓ 完成", "#2ea043")
 _DONE = "_run_done"  # internal sentinel: a run finished
 
 
-def _zh(agent: str) -> str:
-    return AGENT_ZH.get(agent, agent)
-
-
 def _default_labels():
     from committee.markets import get_profile
     return get_profile("tw").labels
 
 
-def detect_lean(text: str) -> str:
-    """從分析師文字中找出傾向關鍵字(看多/看空/中性),找不到回傳「完成」。"""
-    for kw in ("看多", "看空", "中性"):
+def _default_ui():
+    from committee.markets import get_profile
+    return get_profile("tw").ui
+
+
+def detect_lean(text, lean_words=None, done_word=None):
+    """Find a stance keyword in the analyst text; fall back to done_word."""
+    words = lean_words or ("看多", "看空", "中性")
+    for kw in words:
         if kw in (text or ""):
             return kw
-    return "完成"
+    return done_word or "完成"
 
 
-def verdict_headline(text: str) -> str:
-    """取出主席結論中含「建議」的那一行,否則取第一行。"""
+def verdict_headline(text, recommend_word=None, done_word=None):
+    """Pick the chair's recommendation line; else the first line."""
+    rw = recommend_word or "建議"
     for line in (text or "").splitlines():
-        if "建議" in line:
+        if rw in line:
             return line.strip()
     lines = (text or "").strip().splitlines()
-    return lines[0] if lines else "完成"
+    return lines[0] if lines else (done_word or "完成")
 
 
-def format_event(e: Event, labels=None) -> Optional[Tuple[str, str]]:
+def format_event(e: "Event", labels=None, ui=None) -> "Optional[Tuple[str, str]]":
     """將非串流事件轉成 (顯示文字, 顏色標籤),或回傳 None 表示忽略。"""
     if labels is None:
         labels = _default_labels()
+    if ui is None:
+        ui = _default_ui()
     if e.type == "phase" and e.data.get("phase"):
         phase = labels.phase_names.get(e.data["phase"], e.data["phase"])
         return ("\n=== {} ({}) ===\n".format(phase, e.data.get("stock", "")), "system")
     if e.type == "tool_call":
-        return ("  [工具] {}({})\n".format(e.data.get("tool"), e.data.get("args", {})), e.agent)
+        return ("  [{}] {}({})\n".format(ui["tool_word"], e.data.get("tool"), e.data.get("args", {})), e.agent)
     if e.type == "tool_result":
-        return ("  [完成] {} 已回傳\n".format(e.data.get("tool")), e.agent)
+        return ("  [{}] {}\n".format(ui["done_word"], e.data.get("tool")), e.agent)
     if e.type == "error":
-        return ("  [警告] {} 錯誤:{}\n".format(e.data.get("tool"), e.data.get("error")), "system")
+        return ("  [{}] {}: {}\n".format(ui["warn_word"], e.data.get("tool"), e.data.get("error")), "system")
     if e.type == "message" and e.data.get("text"):
         return ("[{}] {}\n".format(labels.agent_names.get(e.agent, e.agent), e.data["text"]), e.agent)
     return None
@@ -210,15 +199,16 @@ class CommitteeGUI:
         hdr.pack(fill="x")
         tk.Label(hdr, text="{}. {}".format(num, title), fg=color,
                  font=("Microsoft JhengHei", 9, "bold")).pack(side="left")
-        status = tk.Label(hdr, text=_PENDING[0], fg=_PENDING[1],
+        status = tk.Label(hdr, text=self.profile.ui["pending_badge"], fg=_PENDING[1],
                           font=("Microsoft JhengHei", 8))
         status.pack(side="right")
         if model:
-            tk.Label(card, text="模型: " + model, fg="#444444", anchor="w",
+            tk.Label(card, text=self.profile.ui["model_label"] + model, fg="#444444", anchor="w",
                      font=("Consolas", 7), wraplength=260, justify="left").pack(fill="x")
         if tools:
-            tk.Label(card, text="工具: " + ", ".join(tools), fg="#777777", anchor="w",
-                     font=("Microsoft JhengHei", 7), wraplength=260, justify="left").pack(fill="x")
+            tk.Label(card, text=self.profile.ui["tools_label"] + ", ".join(tools), fg="#777777",
+                     anchor="w", font=("Microsoft JhengHei", 7), wraplength=260,
+                     justify="left").pack(fill="x")
         result = tk.Label(card, text="—", fg="#333333", anchor="w",
                           font=("Microsoft JhengHei", 8), wraplength=260, justify="left")
         result.pack(fill="x")
@@ -248,12 +238,12 @@ class CommitteeGUI:
     def _card_running(self, key) -> None:
         c = self.cards.get(key)
         if c:
-            c["status"].config(text=_RUNNING[0], fg=_RUNNING[1])
+            c["status"].config(text=self.profile.ui["running_badge"], fg=_RUNNING[1])
 
     def _card_done(self, key, result: str = "") -> None:
         c = self.cards.get(key)
         if c:
-            c["status"].config(text=_DLDONE[0], fg=_DLDONE[1])
+            c["status"].config(text=self.profile.ui["done_badge"], fg=_DLDONE[1])
             if result:
                 c["result"].config(text=result)
 
@@ -264,7 +254,7 @@ class CommitteeGUI:
 
     def _reset_cards(self) -> None:
         for c in self.cards.values():
-            c["status"].config(text=_PENDING[0], fg=_PENDING[1])
+            c["status"].config(text=self.profile.ui["pending_badge"], fg=_PENDING[1])
             c["result"].config(text="—")
 
     # ---- 使用者操作 ----
@@ -345,24 +335,24 @@ class CommitteeGUI:
             self._set_status(ui["report_saved"] + ": " + e.data.get("path", ""))
             return
         if et == "verdict":
-            head = verdict_headline(e.data.get("text", ""))
+            head = verdict_headline(e.data.get("text", ""), ui["recommend_word"], ui["done_word"])
             self.verdict.config(text=ui["verdict_prefix"] + head)
             self._card_done("agent:chair", head)
             self._set_status(ui["verdict_done"])
             return
         if et == "verification":
             g = e.data.get("grounding", {})
-            txt = "數據支持 {}/{}".format(g.get("supported", 0), g.get("checked", 0))
+            txt = "{} {}/{}".format(self.profile.ui["verify_prefix"], g.get("supported", 0), g.get("checked", 0))
             if not g.get("grounded", True):
-                txt += " ⚠ 未支持: " + ", ".join(str(x) for x in g.get("unsupported", []))
+                txt += " ⚠ " + self.profile.ui["unsupported_word"] + ": " + ", ".join(str(x) for x in g.get("unsupported", []))
             self._card_done("phase:VERIFY", txt)
-            self._set_status("查核:" + txt)
+            self._set_status(txt)
             return
         if et == "phase":
             ph = e.data.get("phase")
             if ph:
                 self._end_stream()
-                self._append(*format_event(e, labels))
+                self._append(*format_event(e, self.profile.labels, self.profile.ui))
                 self._set_status("● {} — {}".format(labels.phase_names.get(ph, ph), e.data.get("stock", "")))
                 if self._cur_phase and self._cur_phase != ph:
                     self._card_done("phase:" + self._cur_phase)
@@ -381,17 +371,17 @@ class CommitteeGUI:
             self._set_status("{}:{}".format(an.get(e.agent, e.agent), ui["done_word"]))
             txt = e.data.get("text", "")
             if e.agent == "chair":
-                result = verdict_headline(txt)
+                result = verdict_headline(txt, ui["recommend_word"], ui["done_word"])
             elif e.agent == "verifier":
                 lines = txt.strip().splitlines()
                 result = (lines[0][:24] if lines else ui["done_word"])
             else:
-                result = detect_lean(txt)
+                result = detect_lean(txt, self.profile.ui["lean_words"], ui["done_word"])
             self._card_done("agent:" + e.agent, result)
             return
         if et in ("tool_call", "tool_result", "error"):
             self._end_stream()
-            formatted = format_event(e, labels)
+            formatted = format_event(e, self.profile.labels, self.profile.ui)
             if formatted:
                 self._append(*formatted)
             if et == "tool_call":
@@ -417,7 +407,7 @@ class CommitteeGUI:
         if self._cur_agent == e.agent and self._cur_has_tokens:
             self._append("\n", e.agent)
         else:
-            formatted = format_event(e, self.profile.labels)
+            formatted = format_event(e, self.profile.labels, self.profile.ui)
             if formatted:
                 self._append(*formatted)
         self._cur_agent = None
