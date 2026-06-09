@@ -14,6 +14,13 @@ _EDGAR_TICKERS = "https://www.sec.gov/files/company_tickers.json"
 _HEADERS = {"User-Agent": "tw-stock-analysis committee (contact: research@example.com)"}
 
 
+def _f(v: Any) -> Optional[float]:
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
+
+
 def _norm_yield(raw: Any) -> Optional[float]:
     """yfinance returns dividendYield as a fraction (0.0045) or percent (0.45)
     depending on version. Normalize to a percent to match TW's field meaning."""
@@ -63,3 +70,25 @@ class UsClient:
                     "pe": info.get("trailingPE"), "pb": info.get("priceToBook"),
                     "dividend_yield": _norm_yield(info.get("dividendYield"))}
         return self._cache("us_valuation_{}_{}".format(stock_no, self._today.strftime("%Y%m%d")), build)
+
+    _PERIOD = {1: "1mo", 2: "3mo", 3: "3mo", 6: "6mo", 12: "1y"}
+
+    def _history(self, symbol: str, months: int) -> List[Dict[str, Any]]:
+        period = self._PERIOD.get(int(months), "6mo")
+        df = self._yfinance().Ticker(symbol).history(period=period, interval="1d")
+        rows: List[Dict[str, Any]] = []
+        for r in df.itertuples():
+            rows.append({"date": r.Index.strftime("%Y-%m-%d"),
+                         "open": _f(r.Open), "high": _f(r.High), "low": _f(r.Low),
+                         "close": _f(r.Close), "volume": int(r.Volume or 0)})
+        rows.sort(key=lambda x: x["date"])
+        return rows
+
+    def price_history(self, stock_no: str, months: int = 3) -> List[Dict[str, Any]]:
+        key = "us_stock_day_{}_{}_{}".format(stock_no, int(months), self._today.strftime("%Y%m%d"))
+        return self._cache(key, lambda: self._history(stock_no, months))
+
+    def index_history(self, months: int = 3) -> List[Dict[str, Any]]:
+        key = "us_index_{}_{}".format(int(months), self._today.strftime("%Y%m%d"))
+        rows = self._cache(key, lambda: self._history("^GSPC", months))
+        return [{"date": r["date"], "close": r["close"]} for r in rows]
