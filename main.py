@@ -7,13 +7,9 @@ from agentcore.evidence import EvidenceLedger
 from agentcore.llm import LLMClient
 from agentcore.orchestrator import Orchestrator
 from agentcore.report import ReportCollector
-from committee.agents import (ANALYST_TASK_TEMPLATE, CHALLENGE_TASK_TEMPLATE,
-                              CORRECTION_TASK_TEMPLATE, REBUTTAL_TASK_TEMPLATE,
-                              REFLECT_TASK_TEMPLATE, VERIFY_TASK_TEMPLATE,
-                              build_committee)
-from committee.config import API_KEY_ENV, BASE_URL, CACHE_DIR, REFLECTION_PASSES
-from committee.data.twse import TwseClient
+from committee.config import API_KEY_ENV, BASE_URL, REFLECTION_PASSES
 from committee.domain_tools import build_registry
+from committee.markets import detect_market, get_profile
 from committee.report import save_report
 
 
@@ -54,22 +50,25 @@ def run(stock_no: str) -> str:
     bus.subscribe(collector)
     ledger = EvidenceLedger()
     llm = LLMClient(base_url=BASE_URL, api_key_env=API_KEY_ENV)
-    twse = TwseClient(cache_dir=CACHE_DIR)
-    registry = build_registry(twse)
-    committee = build_committee()
+
+    profile = get_profile(detect_market(stock_no))
+    registry = build_registry(profile.client, profile.descriptions)
+    t = profile.templates
+    committee = profile.committee
     orch = Orchestrator(research=committee.research, challengers=committee.challengers,
                         chair=committee.chair, verifier=committee.verifier,
-                        analyst_task_template=ANALYST_TASK_TEMPLATE,
-                        challenge_task_template=CHALLENGE_TASK_TEMPLATE,
-                        rebuttal_task_template=REBUTTAL_TASK_TEMPLATE,
-                        reflect_task_template=REFLECT_TASK_TEMPLATE,
+                        analyst_task_template=t.analyst,
+                        challenge_task_template=t.challenge,
+                        rebuttal_task_template=t.rebuttal,
+                        reflect_task_template=t.reflect,
                         reflection_passes=REFLECTION_PASSES,
-                        verify_task_template=VERIFY_TASK_TEMPLATE,
-                        correction_task_template=CORRECTION_TASK_TEMPLATE)
+                        verify_task_template=t.verify,
+                        correction_task_template=t.correction)
     verdict = orch.run(stock_no=stock_no, llm=llm, registry=registry,
                        bus=bus, ledger=ledger)
-    path = save_report(stock_no, collector, ledger=ledger, twse=twse)
-    print("\n[報告] 已存至: {}".format(path))
+    path = save_report(stock_no, collector, ledger=ledger, twse=profile.client,
+                       labels=profile.labels)
+    print("\n[report] saved to: {}".format(path))
     return verdict
 
 

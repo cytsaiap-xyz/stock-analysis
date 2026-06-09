@@ -72,3 +72,4 @@ class MarketProfile:
     committee: Any                     # committee.agents.Committee
     templates: Templates
     labels: ReportLabels
+    descriptions: ToolDescriptions
