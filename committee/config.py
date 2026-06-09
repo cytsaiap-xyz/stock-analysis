@@ -10,6 +10,7 @@ load_dotenv()
 
 NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+GOOGLE_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai"
 
 # Per-provider connection + two-tier model defaults. Both providers are
 # OpenAI-compatible, so switching is just base_url + api key + model ids.
@@ -26,6 +27,12 @@ _PROVIDERS: Dict[str, Dict[str, str]] = {
         "api_key_env": "OPENROUTER_API_KEY",
         "reasoner": "deepseek/deepseek-v4-flash:free",
         "tool_caller": "qwen/qwen3-coder:free",
+    },
+    "google": {
+        "base_url": GOOGLE_BASE_URL,
+        "api_key_env": "GOOGLE_API_KEY",
+        "reasoner": "gemma-4-31b-it",
+        "tool_caller": "gemma-4-31b-it",
     },
 }
 

@@ -21,6 +21,15 @@ def test_openrouter_provider_switches_base_url_key_and_models():
     assert r["tool_caller"] == "qwen/qwen3-coder:free"
 
 
+def test_google_provider_switches_base_url_key_and_models():
+    r = resolve({"LLM_PROVIDER": "google"})
+    assert r["provider"] == "google"
+    assert r["base_url"] == "https://generativelanguage.googleapis.com/v1beta/openai"
+    assert r["api_key_env"] == "GOOGLE_API_KEY"
+    assert r["reasoner"] == "gemma-4-31b-it"
+    assert r["tool_caller"] == "gemma-4-31b-it"
+
+
 def test_provider_name_is_case_insensitive():
     assert resolve({"LLM_PROVIDER": "OpenRouter"})["provider"] == "openrouter"
 
