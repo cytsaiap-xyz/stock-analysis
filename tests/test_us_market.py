@@ -81,3 +81,38 @@ def test_index_history_uses_sp500_close_series():
     idx = c.index_history(months=1)
     assert idx[0]["date"] == "2026-05-01"
     assert "close" in idx[0] and len(idx[0]) == 2
+
+
+class _FakeTickerHolders(_FakeTicker):
+    def __init__(self, symbol):
+        super().__init__(symbol)
+        self.info = {"longName": "Apple Inc.", "heldPercentInstitutions": 0.612}
+
+    def get_institutional_holders(self):
+        return [{"Holder": "Vanguard", "pctHeld": 0.084},
+                {"Holder": "BlackRock", "pctHeld": 0.066}]
+
+
+class _FakeYfHolders(_FakeYf):
+    def Ticker(self, symbol):
+        return _FakeTickerHolders(symbol)
+
+
+def test_institutional_flows_returns_ownership_and_top_holders():
+    c = UsClient(cache_dir=tempfile.mkdtemp(), yf=_FakeYfHolders())
+    out = c.institutional_flows("AAPL")
+    assert out["available"] is True
+    assert abs(out["inst_ownership_pct"] - 61.2) < 1e-9
+    assert out["top_holders"][0] == {"holder": "Vanguard", "pct": 8.4}
+
+
+def test_institutional_flows_missing_data_is_graceful():
+    class _Empty(_FakeYf):
+        def Ticker(self, symbol):
+            t = _FakeTicker(symbol)
+            t.info = {}
+            t.get_institutional_holders = lambda: None
+            return t
+    c = UsClient(cache_dir=tempfile.mkdtemp(), yf=_Empty())
+    out = c.institutional_flows("AAPL")
+    assert out["available"] is False

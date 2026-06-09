@@ -92,3 +92,20 @@ class UsClient:
         key = "us_index_{}_{}".format(int(months), self._today.strftime("%Y%m%d"))
         rows = self._cache(key, lambda: self._history("^GSPC", months))
         return [{"date": r["date"], "close": r["close"]} for r in rows]
+
+    def institutional_flows(self, stock_no: str) -> Dict[str, Any]:
+        def build():
+            t = self._yfinance().Ticker(stock_no)
+            info = t.info or {}
+            pct = info.get("heldPercentInstitutions")
+            holders = t.get_institutional_holders() or []
+            top = [{"holder": h.get("Holder"), "pct": round(float(h.get("pctHeld")) * 100, 4)}
+                   for h in holders if h.get("pctHeld") is not None][:5]
+            if pct is None and not top:
+                return {"stock_no": stock_no, "available": False,
+                        "note": "Institutional ownership data unavailable"}
+            return {"stock_no": stock_no, "available": True,
+                    "name": info.get("longName") or stock_no,
+                    "inst_ownership_pct": round(float(pct) * 100, 4) if pct is not None else None,
+                    "top_holders": top}
+        return self._cache("us_inst_{}_{}".format(stock_no, self._today.strftime("%Y%m%d")), build)
