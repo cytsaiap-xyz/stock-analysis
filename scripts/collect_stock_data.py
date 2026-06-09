@@ -17,7 +17,7 @@ try:
 except Exception:
     pass
 
-from committee.data.twse import TwseClient
+from committee.markets import detect_market, get_profile
 from committee.data.indicators import (
     compute_indicators,
     compute_oscillators,
@@ -38,15 +38,15 @@ def main():
     stock = sys.argv[1] if len(sys.argv) > 1 else "2330"
     months = int(sys.argv[2]) if len(sys.argv) > 2 else 6
 
-    twse = TwseClient()
-    out = {"stock_no": stock, "months": months}
+    client = get_profile(detect_market(stock)).client
+    out = {"stock_no": stock, "months": months, "market": detect_market(stock)}
 
-    prices = safe(lambda: twse.price_history(stock, months=months))
-    index = safe(lambda: twse.index_history(months=months))
+    prices = safe(lambda: client.price_history(stock, months=months))
+    index = safe(lambda: client.index_history(months=months))
     have_prices = isinstance(prices, list) and len(prices) > 0
     have_index = isinstance(index, list) and len(index) > 0
 
-    out["valuation"] = safe(lambda: twse.valuation(stock))
+    out["valuation"] = safe(lambda: client.valuation(stock))
     name = out["valuation"].get("name") if isinstance(out["valuation"], dict) else None
     out["company_name"] = name or ""
 
@@ -62,9 +62,9 @@ def main():
         safe(lambda: compute_relative_strength(prices, index))
         if have_prices and have_index else {"error": "price or index history unavailable"}
     )
-    out["institutional_flows"] = safe(lambda: twse.institutional_flows(stock))
-    out["monthly_revenue"] = safe(lambda: twse.monthly_revenue(stock))
-    out["financials"] = safe(lambda: twse.financials(stock))
+    out["institutional_flows"] = safe(lambda: client.institutional_flows(stock))
+    out["monthly_revenue"] = safe(lambda: client.monthly_revenue(stock))
+    out["financials"] = safe(lambda: client.financials(stock))
     out["news"] = safe(lambda: search_news("{} {}".format(out["company_name"], stock).strip()))
 
     if have_prices:
