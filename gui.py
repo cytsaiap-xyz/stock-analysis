@@ -64,6 +64,11 @@ def _zh(agent: str) -> str:
     return AGENT_ZH.get(agent, agent)
 
 
+def _default_labels():
+    from committee.markets import get_profile
+    return get_profile("tw").labels
+
+
 def detect_lean(text: str) -> str:
     """從分析師文字中找出傾向關鍵字(看多/看空/中性),找不到回傳「完成」。"""
     for kw in ("看多", "看空", "中性"):
@@ -81,10 +86,12 @@ def verdict_headline(text: str) -> str:
     return lines[0] if lines else "完成"
 
 
-def format_event(e: Event) -> Optional[Tuple[str, str]]:
+def format_event(e: Event, labels=None) -> Optional[Tuple[str, str]]:
     """將非串流事件轉成 (顯示文字, 顏色標籤),或回傳 None 表示忽略。"""
+    if labels is None:
+        labels = _default_labels()
     if e.type == "phase" and e.data.get("phase"):
-        phase = PHASE_ZH.get(e.data["phase"], e.data["phase"])
+        phase = labels.phase_names.get(e.data["phase"], e.data["phase"])
         return ("\n=== {} ({}) ===\n".format(phase, e.data.get("stock", "")), "system")
     if e.type == "tool_call":
         return ("  [工具] {}({})\n".format(e.data.get("tool"), e.data.get("args", {})), e.agent)
@@ -93,7 +100,7 @@ def format_event(e: Event) -> Optional[Tuple[str, str]]:
     if e.type == "error":
         return ("  [警告] {} 錯誤:{}\n".format(e.data.get("tool"), e.data.get("error")), "system")
     if e.type == "message" and e.data.get("text"):
-        return ("[{}] {}\n".format(_zh(e.agent), e.data["text"]), e.agent)
+        return ("[{}] {}\n".format(labels.agent_names.get(e.agent, e.agent), e.data["text"]), e.agent)
     return None
 
 

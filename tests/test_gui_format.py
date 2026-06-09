@@ -61,3 +61,28 @@ def test_error_renders_as_system():
                              data={"tool": "get_x", "error": "boom"}))
     text, tag = out
     assert tag == "system" and "boom" in text
+
+
+from committee.markets import get_profile
+
+
+def test_format_event_message_uses_market_labels():
+    from gui import format_event
+    us = get_profile("us").labels
+    out = format_event(Event(type="message", agent="fundamental", data={"text": "hi"}), us)
+    assert out == ("[Fundamentals Analyst] hi\n", "fundamental")
+
+
+def test_format_event_phase_uses_market_labels():
+    from gui import format_event
+    us = get_profile("us").labels
+    out = format_event(Event(type="phase", agent="system",
+                             data={"phase": "RESEARCH", "stock": "AAPL"}), us)
+    text, tag = out
+    assert "Research" in text and tag == "system"
+
+
+def test_format_event_defaults_to_tw_when_no_labels():
+    from gui import format_event
+    out = format_event(Event(type="message", agent="fundamental", data={"text": "hi"}))
+    assert out == ("[基本面分析師] hi\n", "fundamental")
