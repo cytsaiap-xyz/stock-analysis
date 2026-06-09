@@ -27,7 +27,7 @@ from agentcore.orchestrator import Orchestrator
 from agentcore.report import ReportCollector
 from committee.config import API_KEY_ENV, BASE_URL, REFLECTION_PASSES
 from committee.domain_tools import build_registry
-from committee.markets import detect_market, get_profile
+from committee.markets import get_profile
 from committee.report import save_report
 
 _STATIC = Path(__file__).parent / "static"
@@ -83,7 +83,7 @@ def committee_info(market: str = "tw") -> Dict[str, Any]:
 _DONE_SENTINEL = object()
 
 
-def _run_committee(stock_no: str, q: "queue.Queue",
+def _run_committee(stock_no: str, market: str, q: "queue.Queue",
                    collector: ReportCollector, ledger: EvidenceLedger) -> None:
     """Background worker: runs the committee, pushes events into the queue.
     Saves the HTML report on completion and pushes a final 'report' event."""
@@ -92,7 +92,7 @@ def _run_committee(stock_no: str, q: "queue.Queue",
         bus.subscribe(q.put)
         bus.subscribe(collector)
         llm = LLMClient(base_url=BASE_URL, api_key_env=API_KEY_ENV)
-        profile = get_profile(detect_market(stock_no))
+        profile = get_profile(_safe_market(market))
         registry = build_registry(profile.client, profile.descriptions)
         t = profile.templates
         committee = profile.committee
@@ -120,13 +120,13 @@ def _run_committee(stock_no: str, q: "queue.Queue",
         q.put(_DONE_SENTINEL)
 
 
-@app.websocket("/ws/run/{stock_no}")
-async def ws_run(ws: WebSocket, stock_no: str) -> None:
+@app.websocket("/ws/run/{market}/{stock_no}")
+async def ws_run(ws: WebSocket, market: str, stock_no: str) -> None:
     await ws.accept()
     q: "queue.Queue" = queue.Queue()
     collector = ReportCollector()
     ledger = EvidenceLedger()
-    threading.Thread(target=_run_committee, args=(stock_no, q, collector, ledger),
+    threading.Thread(target=_run_committee, args=(stock_no, market, q, collector, ledger),
                      daemon=True).start()
 
     try:

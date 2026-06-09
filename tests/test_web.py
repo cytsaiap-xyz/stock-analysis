@@ -68,3 +68,32 @@ def test_committee_info_us_is_english():
 def test_committee_info_unknown_market_falls_back_to_tw():
     from web.server import committee_info
     assert committee_info("jp")["ui"]["title"] == "台股投資委員會"
+
+
+def test_run_committee_uses_forced_market(monkeypatch):
+    """_run_committee must route by the explicit market arg, not the ticker."""
+    import queue
+    import web.server as ws
+    from agentcore.report import ReportCollector
+    from agentcore.evidence import EvidenceLedger
+
+    captured = {}
+
+    class _StubOrch:
+        def __init__(self, **kw):
+            pass
+        def run(self, **kw):
+            captured["ran"] = True
+
+    monkeypatch.setattr(ws, "Orchestrator", _StubOrch)
+    monkeypatch.setattr(ws, "LLMClient", lambda **kw: object())
+    monkeypatch.setattr(ws, "save_report",
+                        lambda *a, **k: type("P", (), {"name": "x.html"})())
+    monkeypatch.setattr(ws, "build_registry",
+                        lambda client, desc: captured.update(client_type=type(client).__name__) or "REG")
+
+    q = queue.Queue()
+    # Force US market with a TW-looking ticker; the US client must be chosen.
+    ws._run_committee("2330", "us", q, ReportCollector(), EvidenceLedger())
+    assert captured.get("ran") is True
+    assert captured.get("client_type") == "UsClient"
