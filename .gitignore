@@ -8,3 +8,4 @@ reports/
 .pytest_cache/
 node_modules/
 .venv/
+db.sqlite3
