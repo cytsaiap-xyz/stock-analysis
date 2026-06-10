@@ -80,3 +80,7 @@ def test_discussion_rounds_default_and_override(monkeypatch):
     monkeypatch.setenv("DISCUSSION_ROUNDS", "0")
     importlib.reload(cfg)
     assert cfg.DISCUSSION_ROUNDS == 0
+    # monkeypatch auto-undoes the env var but does not re-reload the module, so
+    # restore committee.config to its default-env state for later tests.
+    monkeypatch.delenv("DISCUSSION_ROUNDS", raising=False)
+    importlib.reload(cfg)
