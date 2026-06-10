@@ -1,7 +1,7 @@
 from django.conf import settings
 from django.http import FileResponse, JsonResponse
 
-from committee.config import REFLECTION_PASSES
+from committee.config import DISCUSSION_ROUNDS, REFLECTION_PASSES
 from committee.markets import get_profile
 
 from committee_web.run import safe_market
@@ -31,6 +31,7 @@ def committee_info(request):
         "phase_names": profile.labels.phase_names,
         "agent_names": names,
         "reflection_passes": REFLECTION_PASSES,
+        "discussion_rounds": DISCUSSION_ROUNDS,
         "ui": profile.ui,
         "stocklist": profile.stocklist,
     })

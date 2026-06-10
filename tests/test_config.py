@@ -69,3 +69,14 @@ def test_single_model_has_no_fallbacks():
 def test_unknown_provider_raises():
     with pytest.raises(ValueError, match="LLM_PROVIDER"):
         resolve({"LLM_PROVIDER": "bogus"})
+
+
+def test_discussion_rounds_default_and_override(monkeypatch):
+    import importlib
+    import committee.config as cfg
+    monkeypatch.delenv("DISCUSSION_ROUNDS", raising=False)
+    importlib.reload(cfg)
+    assert cfg.DISCUSSION_ROUNDS == 2
+    monkeypatch.setenv("DISCUSSION_ROUNDS", "0")
+    importlib.reload(cfg)
+    assert cfg.DISCUSSION_ROUNDS == 0

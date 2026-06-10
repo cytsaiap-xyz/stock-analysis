@@ -111,3 +111,8 @@ def test_committee_info_returns_tw_stocklist_chinese():
     d = _client().get("/api/committee?market=tw").json()
     labels = [c["label"] for c in d["stocklist"]]
     assert "半導體" in labels
+
+
+def test_committee_info_returns_discussion_rounds():
+    d = _client().get("/api/committee?market=tw").json()
+    assert "discussion_rounds" in d and isinstance(d["discussion_rounds"], int)

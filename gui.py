@@ -21,7 +21,7 @@ from agentcore.evidence import EvidenceLedger
 from agentcore.llm import LLMClient
 from agentcore.orchestrator import Orchestrator
 from agentcore.report import ReportCollector
-from committee.config import API_KEY_ENV, BASE_URL, REFLECTION_PASSES
+from committee.config import API_KEY_ENV, BASE_URL, DISCUSSION_ROUNDS, REFLECTION_PASSES
 from committee.domain_tools import build_registry
 from committee.markets import get_profile
 from committee.report import save_report
@@ -405,6 +405,8 @@ class CommitteeGUI:
                                 rebuttal_task_template=t.rebuttal,
                                 reflect_task_template=t.reflect,
                                 reflection_passes=REFLECTION_PASSES,
+                                discussion_rounds=DISCUSSION_ROUNDS,
+                                discussion_task_template=t.discussion,
                                 verify_task_template=t.verify,
                                 correction_task_template=t.correction)
             orch.run(stock_no=stock, llm=llm, registry=registry,
