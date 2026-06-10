@@ -89,3 +89,11 @@ def test_consumer_drain_sends_events_then_closes():
 
     assert _json.loads(sent[0])["type"] == "phase"
     assert closed == [True]
+
+
+def test_asgi_application_routes_http_and_websocket():
+    # Importing the ASGI app must succeed (runserver loads it) and expose both
+    # protocols — guards against a bad handler/import that unit tests using the
+    # Django test Client would not exercise.
+    from config.asgi import application
+    assert set(application.application_mapping) == {"http", "websocket"}
