@@ -39,6 +39,10 @@ result. (Full evaluation is in the conversation; chosen approach = "A — custom
 4. **Replaces** the scripted CHALLENGE → REBUTTAL when on. Gated by
    `discussion_rounds` (core default `0` = off → old flow; the committee defaults
    it on via env).
+5. **Per-turn grounding flags:** the verifier *agent* stays out of the debate, but
+   the deterministic `check_grounding` audits every discussion turn — any unsourced
+   figure raises a `grounding_flag` shown inline. No extra LLM cost; keeps the
+   verifier's impartial final-audit role.
 
 ## Components
 
@@ -72,6 +76,40 @@ result. (Full evaluation is in the conversation; chosen approach = "A — custom
   agents keep their tools; the EvidenceLedger keeps recording.
 - VERDICT, REFLECT, VERIFY are unchanged (the Chair's VERDICT prompt already
   consumes the full `transcript`, which now includes the discussion).
+
+### 1b. Per-turn grounding flags (discussion integrity)
+
+The verifier *agent* stays out of the argument, but its **auditing function** is
+applied to every discussion turn **deterministically** (no LLM call). After each
+turn, the orchestrator runs `check_grounding(turn_text, ledger)`; if any figure the
+agent cited is not backed by a recorded tool result, it emits a flag:
+
+```python
+text = run_agent(a, ...)
+transcript.append((a.name, text))
+g = check_grounding(text, ledger)
+if not g["grounded"]:
+    bus.emit(Event(type="grounding_flag", agent=a.name,
+                   data={"unsupported": g["unsupported"]}))
+```
+
+So a debater that fabricates a number to win a point is flagged the moment it
+speaks, while the verifier keeps its impartial *final*-audit role. Wiring:
+
+- `agentcore/events.py`: document the new `grounding_flag` event type.
+- `agentcore/report.py` `ReportCollector`: capture `grounding_flag` events so they
+  land in the report.
+- Front-ends render an inline warning beneath the flagged turn:
+  - `web/static/app.js` `handleEvent`: on `grounding_flag`, append a small warning
+    line (`⚠ {ui.unverified_label}: <figures>`) in the feed (styled like `.err`).
+  - `gui.py` `_handle`: append the same warning line to the feed.
+  - `committee/report.py` `_transcript`: render the flag inline after the agent's
+    turn in the appendix.
+- Label: add `unverified_label` (`未驗證數字` / `unverified figure`) to `tw_ui()` /
+  `us_ui()` (web/GUI) and `ReportLabels.text` (report), per market.
+
+This is deterministic and reuses the existing `check_grounding` — zero extra LLM
+cost. (The same check still runs once more on the Chair's final verdict, unchanged.)
 
 ### 2. Config + committee wiring
 
@@ -112,9 +150,11 @@ result. (Full evaluation is in the conversation; chosen approach = "A — custom
 ## Data flow
 
 RESEARCH (each analyst once, with tools) → **DISCUSSION** (6 debaters × N rounds,
-each seeing the full transcript, with tools) → VERDICT (Chair synthesizes the whole
-transcript) → REFLECT (optional) → VERIFY (grounding + verifier + one correction).
-Every figure in the verdict is still checked by the unchanged `check_grounding`.
+each seeing the full transcript, with tools; **each turn deterministically
+grounding-checked → `grounding_flag` on unsourced figures**) → VERDICT (Chair
+synthesizes the whole transcript) → REFLECT (optional) → VERIFY (grounding +
+verifier + one correction). Every figure in the verdict is still checked by the
+unchanged `check_grounding`; now every figure *in the debate* is checked too.
 
 ## Testing
 
@@ -125,14 +165,19 @@ Every figure in the verdict is still checked by the unchanged `check_grounding`.
     events are **not** emitted.
   - With `discussion_rounds=0` (default), the existing CHALLENGE → REBUTTAL path runs
     unchanged (existing tests stay green).
+  - **Grounding flag:** a discussion turn whose text cites a figure absent from the
+    ledger emits a `grounding_flag` event for that agent; a fully-grounded turn does
+    not. (Fake LLM returns a turn with an unsupported number; assert the event.)
   - `test_default_templates_are_domain_neutral` still passes (the new default
     template is generic English, no market words).
 - `tests/test_config.py`: `DISCUSSION_ROUNDS` default is 2; env override respected.
 - `tests/test_markets.py`: `phase_names["DISCUSSION"]` present for tw/us;
-  `Templates.discussion` non-empty for both.
+  `Templates.discussion` non-empty for both; `unverified_label` in both `ui` dicts
+  (keeps the `set(tw)==set(us)` check green) and both `ReportLabels.text`.
 - `tests/test_django_web.py`: `committee_info` returns `discussion_rounds`.
 - `tests/test_report.py`: a transcript containing DISCUSSION turns renders (the
-  phase label appears in the appendix).
+  phase label appears in the appendix); a captured `grounding_flag` renders its
+  warning inline in the transcript.
 - Front-end pipeline (web/gui) shows a DISCUSSION step when rounds > 0 — browser
   smoke (web) + structural check (gui).
 - Full suite stays green.
