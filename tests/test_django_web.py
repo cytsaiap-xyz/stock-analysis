@@ -97,3 +97,17 @@ def test_asgi_application_routes_http_and_websocket():
     # Django test Client would not exercise.
     from config.asgi import application
     assert set(application.application_mapping) == {"http", "websocket"}
+
+
+def test_committee_info_returns_us_stocklist():
+    d = _client().get("/api/committee?market=us").json()
+    labels = [c["label"] for c in d["stocklist"]]
+    assert "CPU" in labels and "EDA" in labels
+    eda = next(c for c in d["stocklist"] if c["label"] == "EDA")
+    assert any(it["code"] == "SNPS" for it in eda["items"])
+
+
+def test_committee_info_returns_tw_stocklist_chinese():
+    d = _client().get("/api/committee?market=tw").json()
+    labels = [c["label"] for c in d["stocklist"]]
+    assert "半導體" in labels

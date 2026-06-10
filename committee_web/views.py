@@ -32,4 +32,5 @@ def committee_info(request):
         "agent_names": names,
         "reflection_passes": REFLECTION_PASSES,
         "ui": profile.ui,
+        "stocklist": profile.stocklist,
     })
