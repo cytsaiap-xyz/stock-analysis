@@ -56,6 +56,13 @@ def _inline(s):
     return s
 
 
+def render_inline(text):
+    """Render inline markdown (bold/italic/code/http-links) of a single line to
+    HTML, escaping HTML first. No block wrapping — for one-line UI (e.g. the
+    verdict banner headline)."""
+    return _inline(_esc(text or ""))
+
+
 _HEADING = re.compile(r"^(#{1,3})\s+(.*)$")
 _ULI = re.compile(r"^[-*]\s+(.*)$")
 _OLI = re.compile(r"^\d+\.\s+(.*)$")

@@ -80,3 +80,13 @@ def test_http_link_rendered_other_schemes_literal():
 
 def test_snake_case_not_italicized():
     assert render_markdown("get_monthly_revenue") == "<p>get_monthly_revenue</p>"
+
+
+def test_render_inline_renders_bold_without_block_wrapper():
+    from committee.markdown import render_inline
+    assert render_inline("Recommendation: **BUY**") == "Recommendation: <strong>BUY</strong>"
+
+
+def test_render_inline_escapes_html():
+    from committee.markdown import render_inline
+    assert render_inline("<b>x</b>") == "&lt;b&gt;x&lt;/b&gt;"

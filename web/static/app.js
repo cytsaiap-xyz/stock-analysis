@@ -188,7 +188,7 @@ function handleEvent(e) {
   }
   if (t === "verdict") {
     const head = verdictHeadline(MD.splitThinking(e.data.text || "").answer);
-    verdictEl.textContent = ui.verdict_prefix + head;
+    verdictEl.innerHTML = escapeHtml(ui.verdict_prefix) + MD.renderInline(head);
     setCardResult("agent:chair", head);
     setStatus(ui.verdict_done);
     return;

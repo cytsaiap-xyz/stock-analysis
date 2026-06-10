@@ -74,5 +74,7 @@
     return out.join("");
   }
 
-  global.MD = { splitThinking: splitThinking, renderMarkdown: renderMarkdown };
+  function renderInline(text) { return inline(esc(text || "")); }
+
+  global.MD = { splitThinking: splitThinking, renderMarkdown: renderMarkdown, renderInline: renderInline };
 })(window);
