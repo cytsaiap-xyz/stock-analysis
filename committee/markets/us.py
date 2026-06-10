@@ -126,6 +126,7 @@ _US_TEXT = {
     "card_revenue": "Quarterly Revenue", "row_rev": "Revenue", "row_yoy": "YoY",
     "chart_caption": "Close · MA20 (dashed)", "chart_close": "Close",
     "row_foreign": "", "row_trust": "", "row_dealer": "", "row_total": "", "row_mom": "",
+    "thinking_label": "Thinking",
 }
 
 
