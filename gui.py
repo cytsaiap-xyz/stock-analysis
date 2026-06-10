@@ -11,7 +11,7 @@
 import queue
 import threading
 import tkinter as tk
-from tkinter import scrolledtext
+from tkinter import scrolledtext, ttk
 from typing import Optional, Tuple
 
 from dotenv import load_dotenv
@@ -115,10 +115,13 @@ class CommitteeGUI:
         top.pack(fill="x", padx=8, pady=6)
         self.ticker_label = tk.Label(top, text=ui["ticker_label"])
         self.ticker_label.pack(side="left")
-        self.ticker = tk.Entry(top, width=10)
-        self.ticker.insert(0, ui["example_ticker"])
-        self.ticker.pack(side="left", padx=4)
+        self.stock_combo = ttk.Combobox(top, state="readonly", width=26)
+        self.stock_combo.pack(side="left", padx=4)
+        self.stock_combo.bind("<<ComboboxSelected>>", self._on_stock_select)
+        self.ticker = tk.Entry(top, width=10)   # shown only when "Others" is picked
         self.ticker.bind("<Return>", lambda _e: self._on_analyze())
+        self._last_stock = None
+        self._populate_stocks()
         self.btn = tk.Button(top, text=ui["run_button"], command=self._on_analyze)
         self.btn.pack(side="left")
         tk.Radiobutton(top, text="TW", variable=self.market_var, value="tw",
@@ -225,14 +228,55 @@ class CommitteeGUI:
         self.status.config(text=ui["idle"])
         self.pipeline_heading.config(text=ui["pipeline_heading"])
         self.debate_heading.config(text=ui["debate_heading"])
-        cur = self.ticker.get().strip()
-        if not cur or cur in ("2330", "AAPL"):
-            self.ticker.delete(0, "end")
-            self.ticker.insert(0, ui["example_ticker"])
+        self.ticker.delete(0, "end")
+        self._populate_stocks()
         for w in self._pipeline.winfo_children():
             w.destroy()
         self.cards = {}
         self._build_pipeline()
+
+    # ---- 股票下拉選單 ----
+    def _build_stock_values(self):
+        """Return (values, first_stock_string) for the combobox from the profile's
+        stocklist: '— <category> —' separators + '<code> <name>' rows + Others."""
+        values, first = [], None
+        for catg in self.profile.stocklist:
+            values.append("— {} —".format(catg["label"]))
+            for it in catg["items"]:
+                v = "{} {}".format(it["code"], it["name"])
+                values.append(v)
+                if first is None:
+                    first = v
+        values.append(self.profile.ui["others_label"])
+        return values, first
+
+    def _populate_stocks(self):
+        values, first = self._build_stock_values()
+        self.stock_combo.config(values=values)
+        if first:
+            self.stock_combo.set(first)
+            self._last_stock = first
+        self.ticker.pack_forget()
+
+    def _on_stock_select(self, _e=None):
+        v = self.stock_combo.get()
+        if v == self.profile.ui["others_label"]:
+            self.ticker.pack(side="left", padx=4)
+            self.ticker.focus_set()
+        elif v.startswith("— "):                # separator rows are non-actionable
+            if self._last_stock:
+                self.stock_combo.set(self._last_stock)
+        else:
+            self._last_stock = v
+            self.ticker.pack_forget()
+
+    def _selected_stock(self):
+        v = self.stock_combo.get()
+        if v == self.profile.ui["others_label"]:
+            return self.ticker.get().strip()
+        if v.startswith("— "):
+            return ""
+        return v.split(" ", 1)[0]               # the leading code
 
     # ---- 步驟方塊更新 ----
     def _card_running(self, key) -> None:
@@ -262,7 +306,9 @@ class CommitteeGUI:
         if self._busy:
             return
         ui = self.profile.ui
-        stock = self.ticker.get().strip() or ui["example_ticker"]
+        stock = self._selected_stock()
+        if not stock:
+            return
         self._busy = True
         self._cur_agent = None
         self._cur_has_tokens = False
