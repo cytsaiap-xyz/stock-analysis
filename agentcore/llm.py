@@ -93,7 +93,13 @@ class LLMClient:
             if is_last or not _should_try_next_model(last_exc):
                 raise last_exc
         content_parts: List[str] = []
-        acc: Dict[int, Dict[str, str]] = {}
+        # Tool-call fragments are assembled in arrival order. OpenAI-style streams
+        # carry a per-call `index` (so fragments of the same call share a slot);
+        # some OpenAI-compatible endpoints (e.g. Google/Gemini) set index=None and
+        # deliver each call complete in one delta — there a delta with a name
+        # starts a new call and an argument-only delta continues the current one.
+        slots: List[Dict[str, str]] = []
+        by_index: Dict[int, Dict[str, str]] = {}
 
         for chunk in stream:
             if not chunk.choices:
@@ -105,16 +111,28 @@ class LLMClient:
                 if on_token:
                     on_token(text)
             for tc in (getattr(delta, "tool_calls", None) or []):
-                slot = acc.setdefault(tc.index, {"id": "", "name": "", "arguments": ""})
+                idx = getattr(tc, "index", None)
+                fn = getattr(tc, "function", None)
+                name = getattr(fn, "name", None) if fn is not None else None
+                if idx is not None:
+                    slot = by_index.get(idx)
+                    if slot is None:
+                        slot = {"id": "", "name": "", "arguments": ""}
+                        by_index[idx] = slot
+                        slots.append(slot)
+                elif name or not slots:
+                    slot = {"id": "", "name": "", "arguments": ""}
+                    slots.append(slot)
+                else:
+                    slot = slots[-1]
                 if getattr(tc, "id", None):
                     slot["id"] = tc.id
-                fn = getattr(tc, "function", None)
                 if fn is not None:
-                    if getattr(fn, "name", None):
-                        slot["name"] = fn.name
+                    if name:
+                        slot["name"] = name
                     if getattr(fn, "arguments", None):
                         slot["arguments"] += fn.arguments
 
-        tool_calls = [acc[i] for i in sorted(acc)]
+        tool_calls = slots
         content = "".join(content_parts) if content_parts else None
         return {"role": "assistant", "content": content, "tool_calls": tool_calls}
