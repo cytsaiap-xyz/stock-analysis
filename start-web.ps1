@@ -1,10 +1,8 @@
-# Start the Agentic Investment Committee web app (FastAPI + WebSocket).
+# Start the Agentic Investment Committee web app (Django + Channels).
 #   .\start-web.ps1
 #   $env:PORT="9000"; .\start-web.ps1
-#   .\start-web.ps1 --reload        (extra args pass through to uvicorn)
 #
-# .env is loaded by web/server.py itself (load_dotenv), so the active LLM_PROVIDER
-# and model config are picked up automatically.
+# .env is loaded automatically; set LLM_PROVIDER + the matching API key first.
 $ErrorActionPreference = "Stop"
 
 # Run from the project root (this script's folder), wherever it is invoked from.
@@ -25,4 +23,4 @@ if (-not (Test-Path ".env")) {
 }
 
 Write-Host ">> Agentic Investment Committee Web -> http://${bindHost}:${port}  (Ctrl+C to stop)"
-& $py -m uvicorn web.server:app --host $bindHost --port $port @args
+& $py manage.py runserver "$($bindHost):$($port)"
