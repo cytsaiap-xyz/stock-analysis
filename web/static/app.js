@@ -214,7 +214,7 @@ function handleEvent(e) {
   }
   if (t === "grounding_flag") {
     endStream();
-    const figs = JSON.stringify(e.data.unsupported || []);
+    const figs = (e.data.unsupported || []).join(", ");
     appendTool("err", "  ⚠ " + (ui.unverified_label || "unverified") + ": " + figs);
     setCardResult("agent:" + e.agent, "⚠ " + (ui.unverified_label || ""));
     return;

@@ -93,7 +93,7 @@ collector) is a **subscriber**. To add a new front-end you write *one function*
 This is why the system has three front-ends from the same code.
 
 Event types (the protocol): `phase`, `token`, `tool_call`, `tool_result`, `message`,
-`error`, `verdict`, `verification`, `report`. See `agentcore/events.py` and the handler
+`grounding_flag`, `error`, `verdict`, `verification`, `report`. See `agentcore/events.py` and the handler
 switches in `main.py:TerminalRenderer`, `gui.py:_handle`, `web/static/app.js:handleEvent`.
 
 ### The Orchestrator is the only place that knows about debate phases
@@ -111,6 +111,15 @@ improved verdict in the same format. It is gated by `Orchestrator.reflection_pas
 (core default **0 = off**, so the generic core stays unchanged); the committee turns it on
 via `REFLECTION_PASSES` env (default 1, set 0 to disable). The refined `verdict` event
 carries a `reflected: True` flag (mirrors `corrected: True`).
+
+**DISCUSSION is an optional free-form debate phase** that replaces the scripted
+CHALLENGE→REBUTTAL pair. When `Orchestrator.discussion_rounds > 0` (committee env
+`DISCUSSION_ROUNDS`, default **2 = on**; core default **0 = off**, so the generic core
+stays unchanged), the 6 debaters (4 research analysts + 2 challengers) argue round-robin
+for N rounds in place of the scripted challenge/rebuttal turns. Each debate turn is
+deterministically grounding-checked, and unsourced figures raise a `grounding_flag` event
+(`{agent, data:{unsupported:[floats]}}`) shown inline in all three front-ends + the report.
+The domain layer injects a per-market `discussion_task_template` like the other templates.
 
 ### VERIFY is two-part, by design
 
