@@ -74,3 +74,4 @@ class MarketProfile:
     labels: ReportLabels
     descriptions: ToolDescriptions
     ui: Dict[str, str]
+    stocklist: list
