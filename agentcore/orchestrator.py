@@ -18,6 +18,12 @@ _DEFAULT_REBUTTAL_TASK = (
     "The challengers raised the points above. In one paragraph, respond to those "
     "relevant to your expertise or revise your earlier view on {stock}."
 )
+_DEFAULT_DISCUSSION_TASK = (
+    "Here is the committee discussion so far. From your perspective, challenge the "
+    "points you disagree with and defend or revise your own view on {stock}, in one "
+    "short paragraph. Cite only figures supported by the data your tools returned; "
+    "never invent numbers."
+)
 _DEFAULT_REFLECT_TASK = (
     "Re-examine your own draft recommendation for {stock} shown above. Check whether "
     "your reasoning is sound, internally consistent, and supported by the cited data. "
@@ -53,6 +59,8 @@ class Orchestrator:
     analyst_task_template: str = _DEFAULT_ANALYST_TASK
     challenge_task_template: str = _DEFAULT_CHALLENGE_TASK
     rebuttal_task_template: str = _DEFAULT_REBUTTAL_TASK
+    discussion_rounds: int = 0          # 0 = off (scripted challenge/rebuttal); N = round-robin debate
+    discussion_task_template: str = _DEFAULT_DISCUSSION_TASK
     reflect_task_template: str = _DEFAULT_REFLECT_TASK
     reflection_passes: int = 0          # 0 = off; Chair self-refines its draft N times
     verifier: Any = None
@@ -75,21 +83,34 @@ class Orchestrator:
             text = run_agent(a, self.analyst_task_template.format(stock=stock_no))
             transcript.append((a.name, text))
 
-        phase("CHALLENGE")
-        research_summary = _join(transcript)
-        challenger_names = set()
-        for c in self.challengers:
-            challenger_names.add(c.name)
-            text = run_agent(c, self.challenge_task_template.format(stock=stock_no),
-                             context=research_summary)
-            transcript.append((c.name, text))
+        if self.discussion_rounds > 0:
+            phase("DISCUSSION")
+            debaters = list(self.research) + list(self.challengers)
+            for _ in range(self.discussion_rounds):
+                for a in debaters:
+                    text = run_agent(a, self.discussion_task_template.format(stock=stock_no),
+                                     context=_join(transcript))
+                    transcript.append((a.name, text))
+                    g = check_grounding(text, ledger)
+                    if not g["grounded"]:
+                        bus.emit(Event(type="grounding_flag", agent=a.name,
+                                       data={"unsupported": g["unsupported"]}))
+        else:
+            phase("CHALLENGE")
+            research_summary = _join(transcript)
+            challenger_names = set()
+            for c in self.challengers:
+                challenger_names.add(c.name)
+                text = run_agent(c, self.challenge_task_template.format(stock=stock_no),
+                                 context=research_summary)
+                transcript.append((c.name, text))
 
-        phase("REBUTTAL")
-        challenge_summary = _join([t for t in transcript if t[0] in challenger_names])
-        for a in self.research:
-            text = run_agent(a, self.rebuttal_task_template.format(stock=stock_no),
-                             context=challenge_summary)
-            transcript.append((a.name + " (答辯)", text))
+            phase("REBUTTAL")
+            challenge_summary = _join([t for t in transcript if t[0] in challenger_names])
+            for a in self.research:
+                text = run_agent(a, self.rebuttal_task_template.format(stock=stock_no),
+                                 context=challenge_summary)
+                transcript.append((a.name + " (答辯)", text))
 
         phase("VERDICT")
         chair_task = (

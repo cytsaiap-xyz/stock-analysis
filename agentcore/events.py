@@ -5,7 +5,7 @@ from typing import Callable, Dict, List
 
 @dataclass
 class Event:
-    type: str            # phase|message|token|tool_call|tool_result|verdict|verification|error
+    type: str            # phase|message|token|tool_call|tool_result|verdict|verification|grounding_flag|error
     agent: str           # agent name, or "system"
     data: Dict = field(default_factory=dict)
     ts: float = field(default_factory=time.time)
