@@ -1,13 +1,10 @@
-import queue  # noqa: F401  (imported for type clarity; queues are created by callers)
 from typing import Any, Dict
 
 from django.conf import settings
 
 from agentcore.events import Event, EventBus
-from agentcore.evidence import EvidenceLedger  # noqa: F401
 from agentcore.llm import LLMClient
 from agentcore.orchestrator import Orchestrator
-from agentcore.report import ReportCollector  # noqa: F401
 from committee.config import API_KEY_ENV, BASE_URL, REFLECTION_PASSES
 from committee.domain_tools import build_registry
 from committee.markets import get_profile
