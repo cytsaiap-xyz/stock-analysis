@@ -18,7 +18,7 @@ All three share the same engine and produce the same `reports/<stock>_<ts>.html`
 |---|---|---|
 | **CLI** | `python main.py 2330` | Terminal renderer with live streaming |
 | **Desktop GUI** | `python gui.py` | Tkinter window, pipeline cards + live tokens |
-| **Web app** | `python -m uvicorn web.server:app` | FastAPI + WebSocket UI at http://localhost:8000 |
+| **Web app** | `python manage.py runserver` | Django + Channels WebSocket UI at http://localhost:8000 (auto-reloads) |
 
 ## Setup
 
@@ -34,7 +34,7 @@ echo NVIDIA_API_KEY=nvapi-... > .env
 ```bash
 python main.py 2330                          # CLI
 python gui.py                                # desktop GUI
-python -m uvicorn web.server:app             # web → http://localhost:8000
+python manage.py runserver                   # web → http://localhost:8000 (Django, auto-reloads)
 ./start-web.sh   # or  .\start-web.ps1       # web launcher (HOST/PORT overridable)
 ```
 
