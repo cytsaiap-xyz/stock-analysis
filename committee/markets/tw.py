@@ -191,4 +191,5 @@ def tw_ui() -> dict:
         "load_failed": "載入失敗: ",
         "recommend_word": "建議",
         "lean_words": ["看多", "看空", "中性"],
+        "thinking_label": "思考過程",
     }

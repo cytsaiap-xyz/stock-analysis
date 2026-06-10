@@ -187,4 +187,5 @@ def us_ui() -> dict:
         "load_failed": "Load failed: ",
         "recommend_word": "Recommendation",
         "lean_words": ["Bullish", "Bearish", "Neutral"],
+        "thinking_label": "Thinking",
     }

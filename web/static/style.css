@@ -78,3 +78,11 @@ main {
 
 .market-switch { display: inline-flex; gap: 8px; margin-right: 12px; }
 .market-switch label { cursor: pointer; font-weight: 600; }
+
+.msg .body p { margin: .35em 0; }
+.msg .body ul, .msg .body ol { margin: .35em 0; padding-left: 22px; }
+.msg .body code { background: #f3f4f6; padding: 1px 4px; border-radius: 4px; font-family: Consolas, monospace; font-size: .92em; }
+.msg .body pre { background: #f6f8fa; padding: 10px; border-radius: 8px; overflow: auto; }
+.msg details.thinking { margin: 4px 0 8px; border-left: 3px solid #e6e8eb; padding-left: 10px; }
+.msg details.thinking summary { cursor: pointer; color: #6b7280; font-size: .82em; }
+.msg details.thinking .tbody { color: #6b7280; font-size: .92em; }
