@@ -26,20 +26,36 @@ from committee.domain_tools import build_registry
 from committee.markets import get_profile
 from committee.report import save_report
 
+# ---- Theme (matches the web "quiet sell-side terminal") ----
+_BG = "#f4f5f7"        # window background
+_SURFACE = "#ffffff"   # cards / feed
+_INK = "#14161c"
+_INK_SOFT = "#353b46"
+_MUTED = "#6a7280"
+_FAINT = "#9aa1ad"
+_LINE = "#e1e4ea"
+_ACCENT = "#3d4f9f"
+_ACCENT_STRONG = "#2f3f86"
+_BUY = "#2f7d4f"
+
 AGENT_COLORS = {
-    "fundamental": "#1f6feb",
-    "technical": "#2ea043",
-    "institutional": "#d29922",
-    "news": "#db61a2",
-    "risk": "#cf222e",
-    "skeptic": "#bf3989",
-    "chair": "#8957e5",
-    "verifier": "#0a7ea4",
-    "system": "#6e7681",
+    "fundamental": "#2952c8",
+    "technical": "#1f8a4c",
+    "institutional": "#b9810f",
+    "news": "#c2569a",
+    "risk": "#c0392b",
+    "skeptic": "#a83e84",
+    "chair": "#3d4f9f",
+    "verifier": "#0f7e9e",
+    "system": "#6a7280",
 }
-_PENDING = ("⏳ 等待", "#6e7681")
-_RUNNING = ("▶ 進行中", "#1f6feb")
-_DLDONE = ("✓ 完成", "#2ea043")
+_PENDING = ("⏳ 等待", _MUTED)
+_RUNNING = ("▶ 進行中", _ACCENT)
+_DLDONE = ("✓ 完成", _BUY)
+
+# Preferred font families — first one actually installed wins (chosen at runtime).
+_UI_FONTS = ("PingFang TC", "Microsoft JhengHei", "Noto Sans TC", "Helvetica Neue", "Helvetica")
+_MONO_FONTS = ("JetBrains Mono", "SF Mono", "Menlo", "Consolas", "Courier")
 
 _DONE = "_run_done"  # internal sentinel: a run finished
 
@@ -104,50 +120,93 @@ class CommitteeGUI:
         self.cards = {}
         self.market_var = tk.StringVar(value="tw")
         self.profile = get_profile("tw")
+        self._apply_theme()
         self._build_widgets()
         self.root.after(50, self._drain)
+
+    # ---- 主題 / 字型 ----
+    def _apply_theme(self) -> None:
+        """Pick installed fonts and set palette defaults before any widget is built."""
+        import tkinter.font as tkfont
+        fams = set(tkfont.families(self.root))
+        self._ui = next((f for f in _UI_FONTS if f in fams), "Helvetica")
+        self._mono = next((f for f in _MONO_FONTS if f in fams), "Courier")
+        self.root.configure(bg=_BG)
+        opt = self.root.option_add
+        opt("*Frame.background", _BG)
+        opt("*Label.background", _BG)
+        opt("*Label.foreground", _INK_SOFT)
+        opt("*Canvas.background", _BG)
+        opt("*Canvas.highlightThickness", 0)
+        opt("*Radiobutton.background", _BG)
+        opt("*Radiobutton.foreground", _MUTED)
+        opt("*Radiobutton.activeBackground", _BG)
+        opt("*Radiobutton.selectColor", _SURFACE)
+        style = ttk.Style(self.root)
+        try:
+            style.theme_use("clam")
+        except tk.TclError:
+            pass
+        style.configure("TCombobox", fieldbackground=_SURFACE, background=_SURFACE,
+                        foreground=_INK, bordercolor=_LINE, lightcolor=_LINE,
+                        darkcolor=_LINE, arrowcolor=_MUTED, padding=5)
+        style.map("TCombobox", fieldbackground=[("readonly", _SURFACE)],
+                  foreground=[("readonly", _INK)])
+        style.configure("Vertical.TScrollbar", background="#dfe2e9", troughcolor=_BG,
+                        bordercolor=_BG, arrowcolor=_MUTED)
+
+    def _f(self, size, weight="normal"):
+        return (self._ui, size, weight)
+
+    def _mf(self, size):
+        return (self._mono, size)
 
     # ---- 版面 ----
     def _build_widgets(self) -> None:
         ui = self.profile.ui
         self.root.title(ui["title"])
         top = tk.Frame(self.root)
-        top.pack(fill="x", padx=8, pady=6)
-        self.ticker_label = tk.Label(top, text=ui["ticker_label"])
+        top.pack(fill="x", padx=14, pady=(12, 8))
+        tk.Radiobutton(top, text="TW", variable=self.market_var, value="tw",
+                       font=self._f(10, "bold"), command=self._on_market_change).pack(side="left")
+        tk.Radiobutton(top, text="US", variable=self.market_var, value="us",
+                       font=self._f(10, "bold"), command=self._on_market_change).pack(side="left", padx=(0, 12))
+        self.ticker_label = tk.Label(top, text=ui["ticker_label"], fg=_MUTED, font=self._f(10))
         self.ticker_label.pack(side="left")
-        self.stock_combo = ttk.Combobox(top, state="readonly", width=26)
-        self.stock_combo.pack(side="left", padx=4)
+        self.stock_combo = ttk.Combobox(top, state="readonly", width=26, font=self._f(10))
+        self.stock_combo.pack(side="left", padx=6)
         self.stock_combo.bind("<<ComboboxSelected>>", self._on_stock_select)
-        self.ticker = tk.Entry(top, width=10)   # shown only when "Others" is picked
+        self.ticker = tk.Entry(top, width=10, font=self._f(10),
+                               relief="solid", bd=1, highlightthickness=0)
         self.ticker.bind("<Return>", lambda _e: self._on_analyze())
         self._last_stock = None
         self._populate_stocks()
-        self.btn = tk.Button(top, text=ui["run_button"], command=self._on_analyze)
-        self.btn.pack(side="left")
-        tk.Radiobutton(top, text="TW", variable=self.market_var, value="tw",
-                       command=self._on_market_change).pack(side="left")
-        tk.Radiobutton(top, text="US", variable=self.market_var, value="us",
-                       command=self._on_market_change).pack(side="left")
+        self.btn = tk.Button(top, text=ui["run_button"], command=self._on_analyze,
+                             font=self._f(10, "bold"), fg="#ffffff", bg=_ACCENT,
+                             activebackground=_ACCENT_STRONG, activeforeground="#ffffff",
+                             relief="flat", bd=0, padx=16, pady=4, cursor="hand2",
+                             highlightbackground=_ACCENT)
+        self.btn.pack(side="left", padx=(8, 0))
 
         self.verdict = tk.Label(self.root, text=ui["verdict_placeholder"],
-                                font=("Microsoft JhengHei", 12, "bold"), anchor="w",
-                                justify="left", wraplength=820)
-        self.verdict.pack(fill="x", padx=8, pady=(4, 0))
+                                font=self._f(13, "bold"), fg=_INK, anchor="w",
+                                justify="left", wraplength=860)
+        self.verdict.pack(fill="x", padx=14, pady=(6, 0))
         self.status = tk.Label(self.root, text=ui["idle"], anchor="w",
-                               fg="#6e7681", font=("Microsoft JhengHei", 9))
-        self.status.pack(fill="x", padx=8, pady=(0, 4))
+                               fg=_MUTED, font=self._f(9))
+        self.status.pack(fill="x", padx=14, pady=(2, 6))
 
         body = tk.Frame(self.root)
-        body.pack(fill="both", expand=True, padx=8, pady=6)
+        body.pack(fill="both", expand=True, padx=14, pady=(6, 12))
 
         # 左側:可捲動的執行流程步驟方塊
-        left = tk.Frame(body, width=300)
-        left.pack(side="left", fill="y", padx=(0, 8))
+        left = tk.Frame(body, width=312)
+        left.pack(side="left", fill="y", padx=(0, 12))
         left.pack_propagate(False)
         self.pipeline_heading = tk.Label(left, text=ui["pipeline_heading"], anchor="w",
-                                         font=("Microsoft JhengHei", 10, "bold"))
-        self.pipeline_heading.pack(fill="x")
-        canvas = tk.Canvas(left, width=290, highlightthickness=0)
+                                         fg=_FAINT, font=self._f(9, "bold"))
+        self.pipeline_heading.pack(fill="x", pady=(0, 6))
+        canvas = tk.Canvas(left, width=300, highlightthickness=0)
         sb = tk.Scrollbar(left, orient="vertical", command=canvas.yview)
         self._pipeline = tk.Frame(canvas)
         self._pipeline.bind(
@@ -162,10 +221,13 @@ class CommitteeGUI:
         right = tk.Frame(body)
         right.pack(side="left", fill="both", expand=True)
         self.debate_heading = tk.Label(right, text=ui["debate_heading"], anchor="w",
-                                       font=("Microsoft JhengHei", 10, "bold"))
-        self.debate_heading.pack(fill="x")
+                                       fg=_FAINT, font=self._f(9, "bold"))
+        self.debate_heading.pack(fill="x", pady=(0, 6))
         self.feed = scrolledtext.ScrolledText(right, wrap="word", state="disabled",
-                                              font=("Microsoft JhengHei", 10))
+                                              font=self._f(10), bg=_SURFACE, fg=_INK_SOFT,
+                                              relief="flat", bd=0, padx=12, pady=10,
+                                              highlightthickness=1, highlightbackground=_LINE,
+                                              insertbackground=_INK, spacing1=2, spacing3=4)
         self.feed.pack(fill="both", expand=True)
         for name, color in AGENT_COLORS.items():
             self.feed.tag_config(name, foreground=color)
@@ -192,29 +254,31 @@ class CommitteeGUI:
         for i, (key, title, ck, model, tools) in enumerate(steps, start=1):
             self._make_card(i, key, title, ck, model, tools)
             if i < len(steps):
-                tk.Label(self._pipeline, text="↓", fg="#b0b0b0").pack()
+                tk.Label(self._pipeline, text="↓", fg=_FAINT).pack()
 
     def _make_card(self, num, key, title, color_key, model, tools) -> None:
-        color = AGENT_COLORS.get(color_key, "#333333")
-        card = tk.Frame(self._pipeline, bd=1, relief="solid", padx=6, pady=3)
-        card.pack(fill="x")
-        hdr = tk.Frame(card)
+        color = AGENT_COLORS.get(color_key, _INK_SOFT)
+        card = tk.Frame(self._pipeline, bg=_SURFACE, bd=0,
+                        highlightbackground=_LINE, highlightthickness=1, padx=10, pady=7)
+        card.pack(fill="x", pady=3)
+        hdr = tk.Frame(card, bg=_SURFACE)
         hdr.pack(fill="x")
-        tk.Label(hdr, text="{}. {}".format(num, title), fg=color,
-                 font=("Microsoft JhengHei", 9, "bold")).pack(side="left")
+        tk.Label(hdr, text="{}. {}".format(num, title), fg=color, bg=_SURFACE,
+                 font=self._f(9, "bold")).pack(side="left")
         status = tk.Label(hdr, text=self.profile.ui["pending_badge"], fg=_PENDING[1],
-                          font=("Microsoft JhengHei", 8))
+                          bg=_SURFACE, font=self._f(8))
         status.pack(side="right")
         if model:
-            tk.Label(card, text=self.profile.ui["model_label"] + model, fg="#444444", anchor="w",
-                     font=("Consolas", 7), wraplength=260, justify="left").pack(fill="x")
+            tk.Label(card, text=self.profile.ui["model_label"] + model, fg=_MUTED, bg=_SURFACE,
+                     anchor="w", font=self._mf(8), wraplength=268,
+                     justify="left").pack(fill="x", pady=(3, 0))
         if tools:
-            tk.Label(card, text=self.profile.ui["tools_label"] + ", ".join(tools), fg="#777777",
-                     anchor="w", font=("Microsoft JhengHei", 7), wraplength=260,
+            tk.Label(card, text=self.profile.ui["tools_label"] + ", ".join(tools), fg=_FAINT,
+                     bg=_SURFACE, anchor="w", font=self._f(8), wraplength=268,
                      justify="left").pack(fill="x")
-        result = tk.Label(card, text="—", fg="#333333", anchor="w",
-                          font=("Microsoft JhengHei", 8), wraplength=260, justify="left")
-        result.pack(fill="x")
+        result = tk.Label(card, text="—", fg=_INK_SOFT, bg=_SURFACE, anchor="w",
+                          font=self._f(8), wraplength=268, justify="left")
+        result.pack(fill="x", pady=(3, 0))
         self.cards[key] = {"status": status, "result": result}
 
     # ---- 市場切換 ----
