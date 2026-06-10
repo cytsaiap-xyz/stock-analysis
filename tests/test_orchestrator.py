@@ -216,6 +216,27 @@ def test_discussion_turn_with_unsourced_figure_is_flagged():
     assert not any(e.agent == "skeptic" for e in flags)
 
 
+def test_discussion_task_is_role_anchored_and_structured():
+    fund = _StubAgent("fundamental", "估值便宜,看多")
+    tech = _StubAgent("technical", "跌破均線,偏空")
+    risk = _StubAgent("risk", "波動高")
+    chair = _StubAgent("chair", "建議: 持有")
+    labels = {"fundamental": "基本面分析師", "technical": "技術面分析師", "risk": "風險經理"}
+    orch = _orch([fund, tech], [risk], chair, discussion_rounds=1, agent_labels=labels)
+    bus, ledger = EventBus(), EvidenceLedger()
+
+    orch.run(stock_no="2330", llm=None, registry=None, bus=bus, ledger=ledger)
+
+    # technical speaks 2nd in the round: its task names its own role, shows the OTHER
+    # members' latest points (attributed by role), and its own prior stance.
+    ttask = tech.tasks[-1]["task"]
+    assert "技術面分析師" in ttask                          # anchored to its own role
+    assert "基本面分析師" in ttask and "估值便宜" in ttask   # sees others' points, attributed
+    assert "跌破均線" in ttask                              # its own earlier stance fed back
+    # it is NOT handed the raw [name]-joined full transcript as separate context
+    assert tech.tasks[-1]["context"] == ""
+
+
 def test_discussion_disabled_by_default_keeps_challenge_rebuttal():
     fund = _StubAgent("fundamental", "看多")
     risk = _StubAgent("risk", "風險偏高。")

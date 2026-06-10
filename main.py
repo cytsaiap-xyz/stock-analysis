@@ -64,6 +64,7 @@ def run(stock_no: str) -> str:
                         reflection_passes=REFLECTION_PASSES,
                         discussion_rounds=DISCUSSION_ROUNDS,
                         discussion_task_template=t.discussion,
+                        agent_labels=profile.labels.agent_names,
                         verify_task_template=t.verify,
                         correction_task_template=t.correction)
     verdict = orch.run(stock_no=stock_no, llm=llm, registry=registry,

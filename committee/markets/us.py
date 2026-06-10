@@ -79,10 +79,13 @@ def us_templates() -> Templates:
         correction=("Verification found these figures unsupported by data: {figures}. "
                     "Revise the recommendation on US stock {stock} using only "
                     "data-supported numbers, keeping the original output format."),
-        discussion=("Here is the committee discussion so far. From your perspective, "
-                    "challenge the points you disagree with and defend or revise your view "
-                    "on US stock {stock} in one short paragraph. Cite only figures your "
-                    "tools returned; never invent numbers."),
+        discussion=("You are the {role}. Speak only from your own area of expertise about "
+                    "US stock {stock}.\n"
+                    "What the other members just argued:\n{others}\n"
+                    "Your own earlier position: {own}\n"
+                    "In your own words, rebut or refine the points you disagree with, in one "
+                    "short paragraph. Do NOT repeat other members' wording. Cite only figures "
+                    "your tools returned; never invent numbers."),
     )
 
 
