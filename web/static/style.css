@@ -147,13 +147,10 @@ header h1 .sub {
 .market-switch label {
   cursor: pointer;
   font-weight: 600;
-  font-size: .82rem;
+  font-size: .8rem;
   color: var(--muted);
-  padding: 3px 10px;
+  padding: 4px 15px;
   border-radius: var(--pill);
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
   transition: background .18s ease, color .18s ease;
 }
 .market-switch label:has(input:checked) {
@@ -161,7 +158,14 @@ header h1 .sub {
   color: var(--accent);
   box-shadow: var(--shadow-sm);
 }
-.market-switch input { accent-color: var(--accent); }
+/* hide the native radio dot — the labels themselves are the segmented control */
+.market-switch input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
 
 /* ---------- Verdict / verify / status bars ---------- */
 #verdict {
