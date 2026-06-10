@@ -47,8 +47,10 @@ def _join(items: List[Tuple[str, str]]) -> str:
 
 @dataclass
 class Orchestrator:
-    """Runs a Chair-led, bounded debate: RESEARCH -> CHALLENGE -> REBUTTAL -> VERDICT
-    -> (optional REFLECT) -> (optional VERIFY).
+    """Runs a Chair-led, bounded debate. When discussion_rounds > 0 the flow is
+    RESEARCH -> DISCUSSION -> VERDICT -> (optional REFLECT) -> (optional VERIFY) --
+    DISCUSSION (a round-robin debate) replaces the scripted CHALLENGE/REBUTTAL;
+    otherwise the default RESEARCH -> CHALLENGE -> REBUTTAL -> VERDICT -> ... applies.
 
     Domain-agnostic: it only sequences groups of agents and passes prior statements
     forward as context. Task wording is injected via the templates.
@@ -88,6 +90,8 @@ class Orchestrator:
             debaters = list(self.research) + list(self.challengers)
             for _ in range(self.discussion_rounds):
                 for a in debaters:
+                    # _join(transcript) is re-evaluated each turn deliberately so every
+                    # speaker sees all prior turns, including earlier speakers in this round.
                     text = run_agent(a, self.discussion_task_template.format(stock=stock_no),
                                      context=_join(transcript))
                     transcript.append((a.name, text))

@@ -69,9 +69,11 @@ def test_research_analyst_gets_a_rebuttal_round():
 
 def test_default_templates_are_domain_neutral():
     from agentcore.orchestrator import (_DEFAULT_ANALYST_TASK, _DEFAULT_CHALLENGE_TASK,
-                                         _DEFAULT_REBUTTAL_TASK, _DEFAULT_REFLECT_TASK)
+                                         _DEFAULT_REBUTTAL_TASK, _DEFAULT_REFLECT_TASK,
+                                         _DEFAULT_DISCUSSION_TASK)
     for tmpl in (_DEFAULT_ANALYST_TASK, _DEFAULT_CHALLENGE_TASK,
-                 _DEFAULT_REBUTTAL_TASK, _DEFAULT_REFLECT_TASK):
+                 _DEFAULT_REBUTTAL_TASK, _DEFAULT_REFLECT_TASK,
+                 _DEFAULT_DISCUSSION_TASK):
         assert "Taiwan" not in tmpl and "{stock}" in tmpl
 
 
