@@ -82,9 +82,14 @@ function buildPipeline() {
   };
   push("phase:RESEARCH", phaseLabel("RESEARCH"));
   for (const a of roster.research) push("agent:" + a.name, a.label, a.model, a.tools);
-  push("phase:CHALLENGE", phaseLabel("CHALLENGE"));
-  for (const a of roster.challengers) push("agent:" + a.name, a.label, a.model, a.tools);
-  push("phase:REBUTTAL", phaseLabel("REBUTTAL"));
+  if (roster.discussion_rounds > 0) {
+    push("phase:DISCUSSION", phaseLabel("DISCUSSION"));
+    for (const a of roster.challengers) push("agent:" + a.name, a.label, a.model, a.tools);
+  } else {
+    push("phase:CHALLENGE", phaseLabel("CHALLENGE"));
+    for (const a of roster.challengers) push("agent:" + a.name, a.label, a.model, a.tools);
+    push("phase:REBUTTAL", phaseLabel("REBUTTAL"));
+  }
   push("phase:VERDICT", phaseLabel("VERDICT"));
   push("agent:chair", roster.chair.label, roster.chair.model, []);
   if (roster.reflection_passes > 0) push("phase:REFLECT", phaseLabel("REFLECT"));
@@ -205,6 +210,13 @@ function handleEvent(e) {
     endStream();
     appendTool("tool", `  [${ui.done_word}] ${e.data.tool}`);
     setStatus(`${agentLabel(e.agent)}:${ui.received} ${e.data.tool}`);
+    return;
+  }
+  if (t === "grounding_flag") {
+    endStream();
+    const figs = JSON.stringify(e.data.unsupported || []);
+    appendTool("err", "  ⚠ " + (ui.unverified_label || "unverified") + ": " + figs);
+    setCardResult("agent:" + e.agent, "⚠ " + (ui.unverified_label || ""));
     return;
   }
   if (t === "error") {
