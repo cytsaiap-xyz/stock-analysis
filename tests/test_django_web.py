@@ -58,3 +58,34 @@ def test_run_committee_uses_forced_market(monkeypatch):
     run.run_committee("2330", "us", q, ReportCollector(), EvidenceLedger())
     assert captured.get("ran") is True
     assert captured.get("client_type") == "UsClient"  # forced US despite TW ticker
+
+
+def test_consumer_drain_sends_events_then_closes():
+    import asyncio
+    import json as _json
+    import queue
+
+    from committee_web.consumers import RunConsumer
+    from committee_web.run import DONE_SENTINEL
+    from agentcore.events import Event
+
+    sent = []
+    closed = []
+    consumer = RunConsumer()
+
+    async def _send(text_data=None):
+        sent.append(text_data)
+
+    async def _close():
+        closed.append(True)
+
+    consumer.send = _send
+    consumer.close = _close
+
+    q = queue.Queue()
+    q.put(Event(type="phase", agent="system", data={"phase": "RESEARCH", "stock": "AAPL"}))
+    q.put(DONE_SENTINEL)
+    asyncio.run(consumer._drain(q))
+
+    assert _json.loads(sent[0])["type"] == "phase"
+    assert closed == [True]
