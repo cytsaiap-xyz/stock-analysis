@@ -240,10 +240,15 @@ class CommitteeGUI:
         steps = [("phase:RESEARCH", pn.get("RESEARCH", "RESEARCH"), "system", None, None)]
         for a in c.research:
             steps.append(("agent:" + a.name, an.get(a.name, a.name), a.name, a.model, a.tool_names))
-        steps.append(("phase:CHALLENGE", pn.get("CHALLENGE", "CHALLENGE"), "system", None, None))
-        for a in c.challengers:
-            steps.append(("agent:" + a.name, an.get(a.name, a.name), a.name, a.model, a.tool_names))
-        steps.append(("phase:REBUTTAL", pn.get("REBUTTAL", "REBUTTAL"), "system", None, None))
+        if DISCUSSION_ROUNDS > 0:
+            steps.append(("phase:DISCUSSION", pn.get("DISCUSSION", "DISCUSSION"), "system", None, None))
+            for a in c.challengers:
+                steps.append(("agent:" + a.name, an.get(a.name, a.name), a.name, a.model, a.tool_names))
+        else:
+            steps.append(("phase:CHALLENGE", pn.get("CHALLENGE", "CHALLENGE"), "system", None, None))
+            for a in c.challengers:
+                steps.append(("agent:" + a.name, an.get(a.name, a.name), a.name, a.model, a.tool_names))
+            steps.append(("phase:REBUTTAL", pn.get("REBUTTAL", "REBUTTAL"), "system", None, None))
         steps.append(("phase:VERDICT", pn.get("VERDICT", "VERDICT"), "system", None, None))
         steps.append(("agent:chair", an.get("chair", "chair"), "chair", c.chair.model, []))
         if REFLECTION_PASSES > 0:
@@ -445,6 +450,10 @@ class CommitteeGUI:
             return
         if et == "report":
             self._set_status(ui["report_saved"] + ": " + e.data.get("path", ""))
+            return
+        if et == "grounding_flag":
+            figs = ", ".join(str(x) for x in e.data.get("unsupported", []))
+            self._append("  ⚠ {}: {}\n".format(self.profile.ui["unverified_label"], figs), "system")
             return
         if et == "verdict":
             head = verdict_headline(e.data.get("text", ""), ui["recommend_word"], ui["done_word"])
