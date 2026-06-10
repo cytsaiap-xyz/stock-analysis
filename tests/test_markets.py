@@ -5,7 +5,7 @@ from committee.markets.base import (Templates, Prompts, ToolDescriptions,
 
 def test_dataclasses_construct_with_expected_fields():
     t = Templates(analyst="a", challenge="c", rebuttal="r", reflect="rf",
-                  verify="v", correction="co")
+                  verify="v", correction="co", discussion="d")
     assert t.analyst == "a" and t.correction == "co"
 
     p = Prompts(fundamental="f", technical="t", institutional="i", news="n",
@@ -112,3 +112,19 @@ def test_ui_has_others_label_both_markets():
     from committee.markets import get_profile
     assert get_profile("tw").ui["others_label"]
     assert get_profile("us").ui["others_label"]
+
+
+def test_templates_have_discussion_and_phase_label():
+    from committee.markets import get_profile
+    for m, label in (("tw", "討論交鋒"), ("us", "Discussion")):
+        p = get_profile(m)
+        assert p.templates.discussion and "{stock}" in p.templates.discussion
+        assert p.labels.phase_names["DISCUSSION"] == label
+
+
+def test_unverified_label_present_in_ui_and_report_labels():
+    from committee.markets import get_profile
+    for m in ("tw", "us"):
+        p = get_profile(m)
+        assert p.ui["unverified_label"]
+        assert p.labels.text["unverified_label"]

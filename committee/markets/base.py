@@ -14,6 +14,7 @@ class Templates:
     reflect: str
     verify: str
     correction: str
+    discussion: str
 
 
 @dataclass
