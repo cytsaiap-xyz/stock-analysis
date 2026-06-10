@@ -86,3 +86,5 @@ main {
 .msg details.thinking { margin: 4px 0 8px; border-left: 3px solid #e6e8eb; padding-left: 10px; }
 .msg details.thinking summary { cursor: pointer; color: #6b7280; font-size: .82em; }
 .msg details.thinking .tbody { color: #6b7280; font-size: .92em; }
+#stock-select { padding: 3px 6px; max-width: 320px; }
+.hidden { display: none; }
