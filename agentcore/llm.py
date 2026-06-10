@@ -51,17 +51,20 @@ class LLMClient:
         tools: Optional[List[Dict[str, Any]]] = None,
         on_token: Optional[Callable[[str], None]] = None,
         temperature: float = 0.6,
-        max_tokens: int = 1024,
+        max_tokens: Optional[int] = None,
         max_retries: int = 3,
         backoff: float = 1.0,
         fallback_models: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
+        # max_tokens left unset (None) => let the endpoint apply the model's own default
+        # output limit (e.g. Gemma's 8K), instead of truncating responses at a fixed cap.
         kwargs: Dict[str, Any] = dict(
             messages=messages,
             temperature=temperature,
-            max_tokens=max_tokens,
             stream=True,
         )
+        if max_tokens is not None:
+            kwargs["max_tokens"] = max_tokens
         if tools:
             kwargs["tools"] = tools
             kwargs["tool_choice"] = "auto"
