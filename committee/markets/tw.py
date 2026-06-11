@@ -132,6 +132,7 @@ _TW_TEXT = {
     "card_revenue": "月營收", "row_rev": "當月營收", "row_yoy": "年增率 (YoY)",
     "row_mom": "月增率 (MoM)",
     "chart_caption": "收盤價 · MA20(虛線)", "chart_close": "收盤",
+    "thinking_label": "思考過程",
 }
 
 
@@ -190,4 +191,5 @@ def tw_ui() -> dict:
         "load_failed": "載入失敗: ",
         "recommend_word": "建議",
         "lean_words": ["看多", "看空", "中性"],
+        "thinking_label": "思考過程",
     }

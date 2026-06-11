@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from agentcore.report import ReportCollector
+from committee.markdown import render_markdown, split_thinking
 
 # Which ledger tool feeds which dashboard bucket.
 _TOOL_BUCKET = {
@@ -32,6 +33,13 @@ _RATING_CLASS = {"買進": "buy", "持有": "hold", "賣出": "sell",
 
 def _esc(s: Any) -> str:
     return html.escape(str(s if s is not None else ""))
+
+
+def _thought_details(thinking: str, label: str) -> str:
+    if not thinking:
+        return ""
+    return ('<details class="thinking"><summary>' + _esc(label)
+            + '</summary>' + render_markdown(thinking) + '</details>')
 
 
 def _num(v: Any, nd: int = 2, suffix: str = "") -> str:
@@ -209,8 +217,10 @@ def _aspect_sections(msgs: Dict[str, str], labels: Any) -> str:
     for agent, title in order:
         txt = msgs.get(agent)
         if txt:
-            blocks.append('<div class="aspect"><h3>{}</h3><p>{}</p></div>'.format(
-                _esc(title), _esc(txt)))
+            answer, thinking = split_thinking(txt)
+            blocks.append('<div class="aspect"><h3>{}</h3>{}{}</div>'.format(
+                _esc(title), render_markdown(answer),
+                _thought_details(thinking, L.get("thinking_label", ""))))
     if not blocks:
         return ""
     return '<section><h2>' + _esc(L["aspect"]) + '</h2>' + "".join(blocks) + "</section>"
@@ -223,8 +233,10 @@ def _risk_box(msgs: Dict[str, str], labels: Any) -> str:
     for agent in ("risk", "skeptic"):
         txt = msgs.get(agent)
         if txt:
-            items.append('<li><b>{}:</b> {}</li>'.format(
-                _esc(agent_names.get(agent, agent)), _esc(txt)))
+            answer, thinking = split_thinking(txt)
+            items.append('<li><b>{}:</b> {}{}</li>'.format(
+                _esc(agent_names.get(agent, agent)), render_markdown(answer),
+                _thought_details(thinking, L.get("thinking_label", ""))))
     if not items:
         return ""
     return ('<section><h2>' + _esc(L["risk"]) + '</h2><ul class="risk-list">'
@@ -255,8 +267,10 @@ def _transcript(collector: ReportCollector, ledger: Any, labels: Any) -> str:
             if etype in ("message", "verdict"):
                 txt = (data.get("text") or "").strip()
                 if txt:
-                    p.append('<div class="msg"><span class="who">[{}]</span> {}</div>'.format(
-                        _esc(zh), _esc(txt)))
+                    answer, thinking = split_thinking(txt)
+                    p.append('<div class="msg"><span class="who">[{}]</span> {}{}</div>'.format(
+                        _esc(zh), render_markdown(answer),
+                        _thought_details(thinking, labels.text.get("thinking_label", ""))))
             elif etype == "tool_call":
                 p.append('<div class="tool">[工具] {}({})</div>'.format(
                     _esc(data.get("tool")), _esc(data.get("args", {}))))
@@ -313,8 +327,10 @@ def build_html(stock_no: str, collector: ReportCollector, ledger: Any = None,
              + '</div>')
 
     if collector.verdict_text:
-        p.append('<section class="thesis"><h2>' + _esc(L["thesis"]) + '</h2><pre>'
-                 + _esc(collector.verdict_text) + '</pre></section>')
+        v_answer, v_thinking = split_thinking(collector.verdict_text)
+        p.append('<section class="thesis"><h2>' + _esc(L["thesis"]) + '</h2>'
+                 + '<div class="thesis-body">' + render_markdown(v_answer) + '</div>'
+                 + _thought_details(v_thinking, L.get("thinking_label", "")) + '</section>')
 
     p.append(_dashboard(m, labels))
 
@@ -414,4 +430,12 @@ def _css() -> str:
         '.appendix th,.appendix td{border:1px solid var(--line);padding:6px 8px;vertical-align:top;text-align:left;}'
         '.appendix th{background:#f6f8fa;} .appendix pre{margin:0;white-space:pre-wrap;word-break:break-word;}'
         '@media print{body{background:#fff;} .appendix{display:none;}}'
+        '.thinking{margin:6px 0;border-left:3px solid var(--line);padding-left:10px;}'
+        '.thinking summary{cursor:pointer;color:var(--muted);font-size:.85em;}'
+        '.thinking p,.thinking li{color:var(--muted);}'
+        '.aspect ul,.aspect ol,.thesis-body ul,.thesis-body ol{margin:6px 0;padding-left:22px;}'
+        '.aspect code,.thesis-body code{background:#f3f4f6;padding:1px 4px;border-radius:4px;'
+        'font-family:Consolas,monospace;font-size:.92em;}'
+        '.aspect pre,.thesis-body pre{background:#f6f8fa;padding:10px;border-radius:8px;overflow:auto;}'
+        '.thesis-body p{margin:.4em 0;}'
     )

@@ -87,7 +87,7 @@ function streamToken(agent, text) {
     endStream();
     const el = document.createElement("div");
     el.className = "msg agent-" + agent;
-    el.innerHTML = `<span class="who">[${escapeHtml(agentLabel(agent))}]</span><span class="body"></span>`;
+    el.innerHTML = `<span class="who">[${escapeHtml(agentLabel(agent))}]</span><div class="body"></div>`;
     messagesEl.appendChild(el);
     curStreamingAgent = agent;
     curStreamingMsgEl = el.querySelector(".body");
@@ -96,11 +96,27 @@ function streamToken(agent, text) {
   if (text) { curStreamingMsgEl.textContent += text; curStreamingHasTokens = true; }
   messagesEl.scrollTop = messagesEl.scrollHeight;
 }
-function appendMessage(agent, text) {
-  const el = document.createElement("div");
-  el.className = "msg agent-" + agent;
-  el.innerHTML = `<span class="who">[${escapeHtml(agentLabel(agent))}]</span>${escapeHtml(text)}`;
-  messagesEl.appendChild(el);
+function finishMessage(agent, full) {
+  const { answer, thinking } = MD.splitThinking(full);
+  let container;
+  if (curStreamingAgent === agent && curStreamingMsgEl) {
+    container = curStreamingMsgEl.parentElement;          // reuse the streamed .msg
+    curStreamingMsgEl.innerHTML = MD.renderMarkdown(answer);
+  } else {
+    container = document.createElement("div");
+    container.className = "msg agent-" + agent;
+    container.innerHTML = `<span class="who">[${escapeHtml(agentLabel(agent))}]</span>`
+      + `<div class="body">${MD.renderMarkdown(answer)}</div>`;
+    messagesEl.appendChild(container);
+  }
+  if (thinking) {
+    const d = document.createElement("details");
+    d.className = "thinking";
+    d.innerHTML = `<summary>${escapeHtml(ui.thinking_label)}</summary>`
+      + `<div class="tbody">${MD.renderMarkdown(thinking)}</div>`;
+    container.appendChild(d);
+  }
+  endStream();
   messagesEl.scrollTop = messagesEl.scrollHeight;
 }
 function appendTool(klass, text) {
@@ -139,13 +155,14 @@ function handleEvent(e) {
   }
   if (t === "token") { streamToken(e.agent, e.data.text || ""); setStatus(agentLabel(e.agent) + ":" + ui.writing + " ..."); return; }
   if (t === "message") {
-    if (curStreamingAgent === e.agent && curStreamingHasTokens) { endStream(); }
-    else if (e.data.text) { endStream(); appendMessage(e.agent, e.data.text); }
+    const full = e.data.text || "";
+    finishMessage(e.agent, full);
     setStatus(agentLabel(e.agent) + ":" + ui.done_word);
+    const ans = MD.splitThinking(full).answer;
     let result;
-    if (e.agent === "chair") result = verdictHeadline(e.data.text || "");
-    else if (e.agent === "verifier") result = ((e.data.text || "").split("\n")[0] || ui.done_word).slice(0, 24);
-    else result = detectLean(e.data.text || "");
+    if (e.agent === "chair") result = verdictHeadline(ans);
+    else if (e.agent === "verifier") result = (ans.split("\n")[0] || ui.done_word).slice(0, 24);
+    else result = detectLean(ans);
     setCardResult("agent:" + e.agent, result);
     setCardStatus("agent:" + e.agent, ui.done_badge, "done");
     return;
@@ -170,8 +187,8 @@ function handleEvent(e) {
     return;
   }
   if (t === "verdict") {
-    const head = verdictHeadline(e.data.text || "");
-    verdictEl.textContent = ui.verdict_prefix + head;
+    const head = verdictHeadline(MD.splitThinking(e.data.text || "").answer);
+    verdictEl.innerHTML = escapeHtml(ui.verdict_prefix) + MD.renderInline(head);
     setCardResult("agent:chair", head);
     setStatus(ui.verdict_done);
     return;

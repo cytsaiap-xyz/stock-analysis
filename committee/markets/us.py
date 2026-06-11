@@ -126,6 +126,7 @@ _US_TEXT = {
     "card_revenue": "Quarterly Revenue", "row_rev": "Revenue", "row_yoy": "YoY",
     "chart_caption": "Close · MA20 (dashed)", "chart_close": "Close",
     "row_foreign": "", "row_trust": "", "row_dealer": "", "row_total": "", "row_mom": "",
+    "thinking_label": "Thinking",
 }
 
 
@@ -186,4 +187,5 @@ def us_ui() -> dict:
         "load_failed": "Load failed: ",
         "recommend_word": "Recommendation",
         "lean_words": ["Bullish", "Bearish", "Neutral"],
+        "thinking_label": "Thinking",
     }

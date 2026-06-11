@@ -162,3 +162,25 @@ def test_rating_parses_english_verdict():
     assert r["label"] == "BUY"
     assert r["cls"] == "buy"
     assert r["confidence"] == "60%"
+
+
+def test_aspect_message_renders_markdown_and_collapsible_thinking():
+    from committee.report import build_html
+    c = ReportCollector()
+    c(Event(type="message", agent="fundamental",
+            data={"text": "<thought>my reasoning</thought>Verdict: **Bullish**\n- strong margins"}))
+    html = build_html("AAPL", c, generated_at="2026-06-10 10:00:00")
+    assert "<strong>Bullish</strong>" in html
+    assert "<li>strong margins</li>" in html
+    assert '<details class="thinking">' in html
+    assert "my reasoning" in html
+    assert "<thought>" not in html
+
+
+def test_plain_message_without_thinking_has_no_details():
+    from committee.report import build_html
+    c = ReportCollector()
+    c(Event(type="message", agent="technical", data={"text": "Neutral stance"}))
+    html = build_html("AAPL", c, generated_at="2026-06-10 10:00:00")
+    assert "Neutral stance" in html
+    assert html.count('<details class="thinking">') == 0
