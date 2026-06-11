@@ -154,3 +154,11 @@ def test_save_report_writes_file_with_timestamped_name(tmp_path):
     assert path.exists() and path.name == "2454_20260528-093000.html"
     body = path.read_text(encoding="utf-8")
     assert "建議: 賣出" in body and "2454" in body
+
+
+def test_rating_parses_english_verdict():
+    from committee.report import _rating
+    r = _rating("Recommendation: BUY\nConfidence: 60%\nStrong fundamentals.")
+    assert r["label"] == "BUY"
+    assert r["cls"] == "buy"
+    assert r["confidence"] == "60%"

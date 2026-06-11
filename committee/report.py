@@ -19,15 +19,6 @@ from typing import Any, Dict, List, Optional
 
 from agentcore.report import ReportCollector
 
-_AGENT_ZH = {
-    "fundamental": "基本面分析師", "technical": "技術面分析師",
-    "institutional": "籌碼面分析師", "news": "新聞輿情分析師",
-    "risk": "風險經理", "skeptic": "唱反調者",
-    "chair": "主席", "verifier": "查核員", "system": "系統",
-}
-_PHASE_ZH = {"RESEARCH": "研究分析", "CHALLENGE": "質詢", "REBUTTAL": "答辯",
-             "VERDICT": "最終結論", "REFLECT": "自我反省", "VERIFY": "自我查核"}
-
 # Which ledger tool feeds which dashboard bucket.
 _TOOL_BUCKET = {
     "get_valuation": "valuation", "get_financials": "financials",
@@ -35,11 +26,8 @@ _TOOL_BUCKET = {
     "get_relative_strength": "relative", "get_risk_metrics": "risk",
     "get_monthly_revenue": "revenue",
 }
-_RATING_CLASS = {"買進": "buy", "持有": "hold", "賣出": "sell"}
-_DISCLAIMER = (
-    "免責聲明:本報告由 AI 投資委員會自動產生,所有數據取自公開資料來源(TWSE 等),"
-    "僅供研究與技術展示參考,不構成任何投資建議或要約。投資人應自行判斷並承擔風險。"
-)
+_RATING_CLASS = {"買進": "buy", "持有": "hold", "賣出": "sell",
+                 "BUY": "buy", "HOLD": "hold", "SELL": "sell"}
 
 
 def _esc(s: Any) -> str:
@@ -79,11 +67,13 @@ def _metrics(ledger: Any) -> Dict[str, Dict[str, Any]]:
 def _rating(verdict_text: str) -> Dict[str, str]:
     text = verdict_text or ""
     rating = {"label": "—", "cls": "na", "confidence": ""}
-    m = re.search(r"建議\s*[:：]\s*([買進持有賣出]+)", text)
+    m = re.search(r"(?:建議|Recommendation)\s*[:：]\s*([買進持有賣出]+|BUY|HOLD|SELL)",
+                  text, re.IGNORECASE)
     if m:
-        rating["label"] = m.group(1)
-        rating["cls"] = _RATING_CLASS.get(m.group(1), "na")
-    c = re.search(r"信心\s*[:：]\s*([0-9]{1,3})\s*%", text)
+        label = m.group(1).upper() if m.group(1).isascii() else m.group(1)
+        rating["label"] = label
+        rating["cls"] = _RATING_CLASS.get(label, "na")
+    c = re.search(r"(?:信心|Confidence)\s*[:：]\s*([0-9]{1,3})\s*%", text, re.IGNORECASE)
     if c:
         rating["confidence"] = c.group(1) + "%"
     return rating
@@ -100,7 +90,7 @@ def _last_messages(collector: ReportCollector) -> Dict[str, str]:
     return msgs
 
 
-def _svg_price_chart(series: List[Dict[str, Any]]) -> str:
+def _svg_price_chart(series: List[Dict[str, Any]], L: Dict[str, str]) -> str:
     closes = [r.get("close") for r in series if r.get("close") is not None]
     if len(closes) < 2:
         return ""
@@ -129,10 +119,10 @@ def _svg_price_chart(series: List[Dict[str, Any]]) -> str:
     p.append('<polyline class="price" points="{}"/>'.format(close_pts))
     p.append('<text x="{}" y="{}" class="lbl">{}</text>'.format(pad, pad - 4, _num(hi)))
     p.append('<text x="{}" y="{}" class="lbl">{}</text>'.format(pad, height - pad + 18, _num(lo)))
-    p.append('<text x="{}" y="{}" class="lbl end">收盤 {}</text>'.format(width - pad, py(closes[-1]) - 8, _num(closes[-1])))
+    p.append('<text x="{}" y="{}" class="lbl end">{} {}</text>'.format(width - pad, py(closes[-1]) - 8, _esc(L["chart_close"]), _num(closes[-1])))
     p.append('<text x="{}" y="{}" class="dt">{}</text>'.format(pad, height - 8, first_d))
     p.append('<text x="{}" y="{}" class="dt end">{}</text>'.format(width - pad, height - 8, last_d))
-    p.append('<text x="{}" y="{}" class="dt">收盤價 · MA20(虛線)</text>'.format(pad + 90, pad - 4))
+    p.append('<text x="{}" y="{}" class="dt">{}</text>'.format(pad + 90, pad - 4, _esc(L["chart_caption"])))
     p.append("</svg>")
     return "".join(p)
 
@@ -144,70 +134,77 @@ def _card(title: str, rows: List) -> str:
     return '<div class="card"><h3>{}</h3>{}</div>'.format(_esc(title), body)
 
 
-def _dashboard(m: Dict[str, Dict[str, Any]]) -> str:
+def _dashboard(m: Dict[str, Dict[str, Any]], labels: Any) -> str:
+    L = labels.text
     cards: List[str] = []
     if "valuation" in m:
         v = m["valuation"]
-        cards.append(_card("估值", [
-            ("本益比 (PE)", _num(v.get("pe"))),
-            ("股價淨值比 (PB)", _num(v.get("pb"))),
-            ("殖利率", _num(v.get("dividend_yield"), 2, "%")),
+        cards.append(_card(L["card_valuation"], [
+            (L["row_pe"], _num(v.get("pe"))),
+            (L["row_pb"], _num(v.get("pb"))),
+            (L["row_dy"], _num(v.get("dividend_yield"), 2, "%")),
         ]))
     if "financials" in m and m["financials"].get("available", True):
         f = m["financials"]
-        cards.append(_card("獲利能力 · " + _esc(f.get("period", "")), [
-            ("毛利率", _num(f.get("gross_margin_pct"), 2, "%")),
-            ("營業利益率", _num(f.get("operating_margin_pct"), 2, "%")),
-            ("ROE", _num(f.get("roe_pct"), 2, "%")),
-            ("EPS", _num(f.get("eps"))),
+        cards.append(_card(L["card_financials"] + " · " + _esc(f.get("period", "")), [
+            (L["row_gm"], _num(f.get("gross_margin_pct"), 2, "%")),
+            (L["row_om"], _num(f.get("operating_margin_pct"), 2, "%")),
+            (L["row_roe"], _num(f.get("roe_pct"), 2, "%")),
+            (L["row_eps"], _num(f.get("eps"))),
         ]))
     if "technical" in m:
         t = m["technical"]
-        cards.append(_card("技術指標", [
-            ("收盤", _num(t.get("last_close"))),
-            ("MA20", _num(t.get("ma20"))),
-            ("RSI14", _num(t.get("rsi14"))),
-            ("KD", "{} / {}".format(_num(t.get("kd_k")), _num(t.get("kd_d")))),
-            ("MACD", _num(t.get("macd"))),
-            ("期間漲跌", _num(t.get("pct_change_period"), 2, "%")),
+        cards.append(_card(L["card_technical"], [
+            (L["row_close"], _num(t.get("last_close"))),
+            (L["row_ma20"], _num(t.get("ma20"))),
+            (L["row_rsi"], _num(t.get("rsi14"))),
+            (L["row_kd"], "{} / {}".format(_num(t.get("kd_k")), _num(t.get("kd_d")))),
+            (L["row_macd"], _num(t.get("macd"))),
+            (L["row_chg"], _num(t.get("pct_change_period"), 2, "%")),
         ]))
     if "relative" in m:
         r = m["relative"]
-        cards.append(_card("相對大盤", [
-            ("個股報酬", _num(r.get("stock_return_pct"), 2, "%")),
-            ("大盤報酬", _num(r.get("index_return_pct"), 2, "%")),
-            ("超額報酬", _num(r.get("excess_return_pct"), 2, "%")),
-            ("Beta", _num(r.get("beta"))),
+        cards.append(_card(L["card_relative"], [
+            (L["row_stock_ret"], _num(r.get("stock_return_pct"), 2, "%")),
+            (L["row_index_ret"], _num(r.get("index_return_pct"), 2, "%")),
+            (L["row_excess"], _num(r.get("excess_return_pct"), 2, "%")),
+            (L["row_beta"], _num(r.get("beta"))),
         ]))
     if "institutional" in m:
         i = m["institutional"]
-        cards.append(_card("三大法人(張)", [
-            ("外資", _lots(i.get("foreign_net"))),
-            ("投信", _lots(i.get("trust_net"))),
-            ("自營商", _lots(i.get("dealer_net"))),
-            ("合計", _lots(i.get("total_net"))),
-        ]))
+        if labels.institutional_kind == "ownership":
+            rows = [(L["row_inst_own"], _num(i.get("inst_ownership_pct"), 2, "%"))]
+            rows += [(h.get("holder"), _num(h.get("pct"), 2, "%"))
+                     for h in (i.get("top_holders") or [])]
+            cards.append(_card(L["card_institutional"], rows))
+        else:
+            cards.append(_card(L["card_institutional"], [
+                (L["row_foreign"], _lots(i.get("foreign_net"))),
+                (L["row_trust"], _lots(i.get("trust_net"))),
+                (L["row_dealer"], _lots(i.get("dealer_net"))),
+                (L["row_total"], _lots(i.get("total_net"))),
+            ]))
     if "risk" in m:
         rk = m["risk"]
-        cards.append(_card("風險", [
-            ("年化波動率", _num(rk.get("volatility_annual_pct"), 2, "%")),
-            ("最大回撤", _num(rk.get("max_drawdown_pct"), 2, "%")),
+        cards.append(_card(L["card_risk"], [
+            (L["row_vol"], _num(rk.get("volatility_annual_pct"), 2, "%")),
+            (L["row_mdd"], _num(rk.get("max_drawdown_pct"), 2, "%")),
         ]))
     if "revenue" in m and m["revenue"].get("available", True):
         rv = m["revenue"]
-        cards.append(_card("月營收 · " + _esc(rv.get("period", "")), [
-            ("當月營收", _num(rv.get("revenue"), 0)),
-            ("年增率 (YoY)", _num(rv.get("yoy_pct"), 2, "%")),
-            ("月增率 (MoM)", _num(rv.get("mom_pct"), 2, "%")),
-        ]))
+        rows = [(L["row_rev"], _num(rv.get("revenue"), 0)),
+                (L["row_yoy"], _num(rv.get("yoy_pct"), 2, "%"))]
+        if labels.revenue_kind == "monthly":
+            rows.append((L["row_mom"], _num(rv.get("mom_pct"), 2, "%")))
+        cards.append(_card(L["card_revenue"] + " · " + _esc(rv.get("period", "")), rows))
     if not cards:
         return ""
-    return '<section><h2>關鍵數據儀表板</h2><div class="grid">' + "".join(cards) + "</div></section>"
+    return '<section><h2>' + _esc(L["dashboard"]) + '</h2><div class="grid">' + "".join(cards) + "</div></section>"
 
 
-def _aspect_sections(msgs: Dict[str, str]) -> str:
-    order = [("fundamental", "基本面分析"), ("technical", "技術面分析"),
-             ("institutional", "籌碼面分析"), ("news", "新聞輿情分析")]
+def _aspect_sections(msgs: Dict[str, str], labels: Any) -> str:
+    L = labels.text
+    order = labels.aspect_order
     blocks = []
     for agent, title in order:
         txt = msgs.get(agent)
@@ -216,23 +213,27 @@ def _aspect_sections(msgs: Dict[str, str]) -> str:
                 _esc(title), _esc(txt)))
     if not blocks:
         return ""
-    return '<section><h2>分面分析</h2>' + "".join(blocks) + "</section>"
+    return '<section><h2>' + _esc(L["aspect"]) + '</h2>' + "".join(blocks) + "</section>"
 
 
-def _risk_box(msgs: Dict[str, str]) -> str:
+def _risk_box(msgs: Dict[str, str], labels: Any) -> str:
+    L = labels.text
+    agent_names = labels.agent_names
     items = []
     for agent in ("risk", "skeptic"):
         txt = msgs.get(agent)
         if txt:
             items.append('<li><b>{}:</b> {}</li>'.format(
-                _esc(_AGENT_ZH.get(agent, agent)), _esc(txt)))
+                _esc(agent_names.get(agent, agent)), _esc(txt)))
     if not items:
         return ""
-    return ('<section><h2>風險與空方觀點</h2><ul class="risk-list">'
+    return ('<section><h2>' + _esc(L["risk"]) + '</h2><ul class="risk-list">'
             + "".join(items) + "</ul></section>")
 
 
-def _transcript(collector: ReportCollector, ledger: Any) -> str:
+def _transcript(collector: ReportCollector, ledger: Any, labels: Any) -> str:
+    agent_names = labels.agent_names
+    phase_names = labels.phase_names
     by_phase: Dict[str, List] = {}
     cur = "RESEARCH"
     by_phase[cur] = []
@@ -248,9 +249,9 @@ def _transcript(collector: ReportCollector, ledger: Any) -> str:
         items = by_phase.get(ph) or []
         if not items:
             continue
-        p.append('<h3>' + _esc(_PHASE_ZH.get(ph, ph)) + '</h3>')
+        p.append('<h3>' + _esc(phase_names.get(ph, ph)) + '</h3>')
         for agent, etype, data in items:
-            zh = _AGENT_ZH.get(agent, agent)
+            zh = agent_names.get(agent, agent)
             if etype in ("message", "verdict"):
                 txt = (data.get("text") or "").strip()
                 if txt:
@@ -280,7 +281,11 @@ def _transcript(collector: ReportCollector, ledger: Any) -> str:
 
 def build_html(stock_no: str, collector: ReportCollector, ledger: Any = None,
                generated_at: Optional[str] = None, twse: Any = None,
-               months: int = 3) -> str:
+               months: int = 3, labels: Any = None) -> str:
+    if labels is None:
+        from committee.markets.tw import tw_labels
+        labels = tw_labels()
+    L = labels.text
     generated_at = generated_at or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     m = _metrics(ledger)
     rating = _rating(collector.verdict_text or "")
@@ -288,61 +293,64 @@ def build_html(stock_no: str, collector: ReportCollector, ledger: Any = None,
     name = (m.get("valuation") or {}).get("name") or ""
     last_close = (m.get("technical") or {}).get("last_close")
 
-    p = ['<!DOCTYPE html>', '<html lang="zh-TW"><head><meta charset="utf-8">',
+    p = ['<!DOCTYPE html>', '<html lang="{}"><head><meta charset="utf-8">'.format(_esc(labels.lang)),
          '<meta name="viewport" content="width=device-width, initial-scale=1">']
-    p.append('<title>個股研究報告 — ' + _esc(stock_no) + ' ' + _esc(name) + '</title>')
+    p.append('<title>' + _esc(L["title"]) + ' — ' + _esc(stock_no) + ' ' + _esc(name) + '</title>')
     p.append('<style>' + _css() + '</style></head><body><main>')
 
-    p.append('<header><div class="eyebrow">AI 投資委員會 · 個股研究報告</div>'
+    p.append('<header><div class="eyebrow">{}</div>'
              '<h1>{}<span class="code"> {}</span></h1>'
-             '<div class="meta">產出時間 {}</div></header>'.format(
-                 _esc(name or "台股個股分析"), _esc(stock_no), _esc(generated_at)))
+             '<div class="meta">{} {}</div></header>'.format(
+                 _esc(L["eyebrow"]), _esc(name or L["header_fallback"]),
+                 _esc(stock_no), _esc(L["generated_at"]), _esc(generated_at)))
     p.append('<div class="rating rating-{}">'.format(_esc(rating["cls"]))
-             + '<div class="rcol"><span class="rlabel">投資評等</span>'
-               '<span class="rval">{}</span></div>'.format(_esc(rating["label"]))
-             + '<div class="rcol"><span class="rlabel">信心度</span>'
-               '<span class="rnum">{}</span></div>'.format(_esc(rating["confidence"] or "—"))
-             + '<div class="rcol"><span class="rlabel">參考收盤</span>'
-               '<span class="rnum">{}</span></div>'.format(_num(last_close))
+             + '<div class="rcol"><span class="rlabel">{}</span>'.format(_esc(L["rating"]))
+             + '<span class="rval">{}</span></div>'.format(_esc(rating["label"]))
+             + '<div class="rcol"><span class="rlabel">{}</span>'.format(_esc(L["confidence"]))
+             + '<span class="rnum">{}</span></div>'.format(_esc(rating["confidence"] or "—"))
+             + '<div class="rcol"><span class="rlabel">{}</span>'.format(_esc(L["last_close"]))
+             + '<span class="rnum">{}</span></div>'.format(_num(last_close))
              + '</div>')
 
     if collector.verdict_text:
-        p.append('<section class="thesis"><h2>投資論點摘要</h2><pre>'
+        p.append('<section class="thesis"><h2>' + _esc(L["thesis"]) + '</h2><pre>'
                  + _esc(collector.verdict_text) + '</pre></section>')
 
-    p.append(_dashboard(m))
+    p.append(_dashboard(m, labels))
 
-    chart = _svg_price_chart(twse.price_history(stock_no, months=months)) if twse is not None else ""
+    chart = _svg_price_chart(twse.price_history(stock_no, months=months), L) if twse is not None else ""
     if chart:
-        p.append('<section><h2>近期股價走勢</h2>' + chart + '</section>')
+        p.append('<section><h2>' + _esc(L["chart"]) + '</h2>' + chart + '</section>')
 
-    p.append(_aspect_sections(msgs))
-    p.append(_risk_box(msgs))
+    p.append(_aspect_sections(msgs, labels))
+    p.append(_risk_box(msgs, labels))
 
     if collector.grounding:
         g = collector.grounding
         ok = g.get("grounded", True)
-        line = '<section class="integrity {}"><h2>資料完整性查核</h2><p>數據支持 {}/{}'.format(
-            "ok" if ok else "warn", _esc(g.get("supported", 0)), _esc(g.get("checked", 0)))
+        line = '<section class="integrity {}"><h2>{}</h2><p>{} {}/{}'.format(
+            "ok" if ok else "warn", _esc(L["integrity"]), _esc(L["integrity_support"]),
+            _esc(g.get("supported", 0)), _esc(g.get("checked", 0)))
         if not ok:
-            line += ' · 未獲數據支持(已標記): ' + _esc(g.get("unsupported"))
+            line += ' · ' + _esc(L["integrity_unsupported"]) + ': ' + _esc(g.get("unsupported"))
         p.append(line + '</p></section>')
 
-    p.append('<footer class="disclaimer">' + _esc(_DISCLAIMER) + '</footer>')
-    p.append(_transcript(collector, ledger))
+    p.append('<footer class="disclaimer">' + _esc(labels.disclaimer) + '</footer>')
+    p.append(_transcript(collector, ledger, labels))
     p.append('</main></body></html>')
     return "\n".join(part for part in p if part)
 
 
 def save_report(stock_no: str, collector: ReportCollector, ledger: Any = None,
                 reports_dir: str = "reports", now: Optional[datetime] = None,
-                twse: Any = None) -> Path:
+                twse: Any = None, labels: Any = None) -> Path:
     os.makedirs(reports_dir, exist_ok=True)
     stamp = (now or datetime.now())
     ts = stamp.strftime("%Y%m%d-%H%M%S")
     path = Path(reports_dir) / "{}_{}.html".format(stock_no, ts)
     path.write_text(build_html(stock_no, collector, ledger=ledger, twse=twse,
-                               generated_at=stamp.strftime("%Y-%m-%d %H:%M:%S")),
+                               generated_at=stamp.strftime("%Y-%m-%d %H:%M:%S"),
+                               labels=labels),
                     encoding="utf-8")
     return path
 
