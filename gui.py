@@ -21,10 +21,9 @@ from agentcore.evidence import EvidenceLedger
 from agentcore.llm import LLMClient
 from agentcore.orchestrator import Orchestrator
 from agentcore.report import ReportCollector
-from committee.agents import build_committee
 from committee.config import API_KEY_ENV, BASE_URL, REFLECTION_PASSES
 from committee.domain_tools import build_registry
-from committee.markets import detect_market, get_profile
+from committee.markets import get_profile
 from committee.report import save_report
 
 AGENT_COLORS = {
@@ -38,21 +37,6 @@ AGENT_COLORS = {
     "verifier": "#0a7ea4",
     "system": "#6e7681",
 }
-AGENT_ZH = {
-    "fundamental": "基本面分析師",
-    "technical": "技術面分析師",
-    "institutional": "籌碼面分析師",
-    "news": "新聞輿情分析師",
-    "risk": "風險經理",
-    "skeptic": "唱反調者",
-    "chair": "主席",
-    "verifier": "查核員",
-    "system": "系統",
-}
-PHASE_ZH = {"RESEARCH": "研究分析", "CHALLENGE": "質詢",
-            "REBUTTAL": "答辯", "VERDICT": "最終結論",
-            "REFLECT": "自我反省", "VERIFY": "自我查核"}
-
 _PENDING = ("⏳ 等待", "#6e7681")
 _RUNNING = ("▶ 進行中", "#1f6feb")
 _DLDONE = ("✓ 完成", "#2ea043")
@@ -60,40 +44,52 @@ _DLDONE = ("✓ 完成", "#2ea043")
 _DONE = "_run_done"  # internal sentinel: a run finished
 
 
-def _zh(agent: str) -> str:
-    return AGENT_ZH.get(agent, agent)
+def _default_labels():
+    from committee.markets import get_profile
+    return get_profile("tw").labels
 
 
-def detect_lean(text: str) -> str:
-    """從分析師文字中找出傾向關鍵字(看多/看空/中性),找不到回傳「完成」。"""
-    for kw in ("看多", "看空", "中性"):
+def _default_ui():
+    from committee.markets import get_profile
+    return get_profile("tw").ui
+
+
+def detect_lean(text, lean_words=None, done_word=None):
+    """Find a stance keyword in the analyst text; fall back to done_word."""
+    words = lean_words or ("看多", "看空", "中性")
+    for kw in words:
         if kw in (text or ""):
             return kw
-    return "完成"
+    return done_word or "完成"
 
 
-def verdict_headline(text: str) -> str:
-    """取出主席結論中含「建議」的那一行,否則取第一行。"""
+def verdict_headline(text, recommend_word=None, done_word=None):
+    """Pick the chair's recommendation line; else the first line."""
+    rw = recommend_word or "建議"
     for line in (text or "").splitlines():
-        if "建議" in line:
+        if rw in line:
             return line.strip()
     lines = (text or "").strip().splitlines()
-    return lines[0] if lines else "完成"
+    return lines[0] if lines else (done_word or "完成")
 
 
-def format_event(e: Event) -> Optional[Tuple[str, str]]:
+def format_event(e: "Event", labels=None, ui=None) -> "Optional[Tuple[str, str]]":
     """將非串流事件轉成 (顯示文字, 顏色標籤),或回傳 None 表示忽略。"""
+    if labels is None:
+        labels = _default_labels()
+    if ui is None:
+        ui = _default_ui()
     if e.type == "phase" and e.data.get("phase"):
-        phase = PHASE_ZH.get(e.data["phase"], e.data["phase"])
+        phase = labels.phase_names.get(e.data["phase"], e.data["phase"])
         return ("\n=== {} ({}) ===\n".format(phase, e.data.get("stock", "")), "system")
     if e.type == "tool_call":
-        return ("  [工具] {}({})\n".format(e.data.get("tool"), e.data.get("args", {})), e.agent)
+        return ("  [{}] {}({})\n".format(ui["tool_word"], e.data.get("tool"), e.data.get("args", {})), e.agent)
     if e.type == "tool_result":
-        return ("  [完成] {} 已回傳\n".format(e.data.get("tool")), e.agent)
+        return ("  [{}] {}\n".format(ui["done_word"], e.data.get("tool")), e.agent)
     if e.type == "error":
-        return ("  [警告] {} 錯誤:{}\n".format(e.data.get("tool"), e.data.get("error")), "system")
+        return ("  [{}] {}: {}\n".format(ui["warn_word"], e.data.get("tool"), e.data.get("error")), "system")
     if e.type == "message" and e.data.get("text"):
-        return ("[{}] {}\n".format(_zh(e.agent), e.data["text"]), e.agent)
+        return ("[{}] {}\n".format(labels.agent_names.get(e.agent, e.agent), e.data["text"]), e.agent)
     return None
 
 
@@ -106,27 +102,35 @@ class CommitteeGUI:
         self._cur_has_tokens = False
         self._cur_phase = None
         self.cards = {}
+        self.market_var = tk.StringVar(value="tw")
+        self.profile = get_profile("tw")
         self._build_widgets()
         self.root.after(50, self._drain)
 
     # ---- 版面 ----
     def _build_widgets(self) -> None:
-        self.root.title("台股投資委員會 — Agentic AI (7 位委員)")
+        ui = self.profile.ui
+        self.root.title(ui["title"])
         top = tk.Frame(self.root)
         top.pack(fill="x", padx=8, pady=6)
-        tk.Label(top, text="股票代號:").pack(side="left")
+        self.ticker_label = tk.Label(top, text=ui["ticker_label"])
+        self.ticker_label.pack(side="left")
         self.ticker = tk.Entry(top, width=10)
-        self.ticker.insert(0, "2330")
+        self.ticker.insert(0, ui["example_ticker"])
         self.ticker.pack(side="left", padx=4)
         self.ticker.bind("<Return>", lambda _e: self._on_analyze())
-        self.btn = tk.Button(top, text="開始分析", command=self._on_analyze)
+        self.btn = tk.Button(top, text=ui["run_button"], command=self._on_analyze)
         self.btn.pack(side="left")
+        tk.Radiobutton(top, text="TW", variable=self.market_var, value="tw",
+                       command=self._on_market_change).pack(side="left")
+        tk.Radiobutton(top, text="US", variable=self.market_var, value="us",
+                       command=self._on_market_change).pack(side="left")
 
-        self.verdict = tk.Label(self.root, text="結論:(請先執行分析)",
+        self.verdict = tk.Label(self.root, text=ui["verdict_placeholder"],
                                 font=("Microsoft JhengHei", 12, "bold"), anchor="w",
                                 justify="left", wraplength=820)
         self.verdict.pack(fill="x", padx=8, pady=(4, 0))
-        self.status = tk.Label(self.root, text="● 閒置", anchor="w",
+        self.status = tk.Label(self.root, text=ui["idle"], anchor="w",
                                fg="#6e7681", font=("Microsoft JhengHei", 9))
         self.status.pack(fill="x", padx=8, pady=(0, 4))
 
@@ -137,8 +141,9 @@ class CommitteeGUI:
         left = tk.Frame(body, width=300)
         left.pack(side="left", fill="y", padx=(0, 8))
         left.pack_propagate(False)
-        tk.Label(left, text="執行流程 Pipeline", anchor="w",
-                 font=("Microsoft JhengHei", 10, "bold")).pack(fill="x")
+        self.pipeline_heading = tk.Label(left, text=ui["pipeline_heading"], anchor="w",
+                                         font=("Microsoft JhengHei", 10, "bold"))
+        self.pipeline_heading.pack(fill="x")
         canvas = tk.Canvas(left, width=290, highlightthickness=0)
         sb = tk.Scrollbar(left, orient="vertical", command=canvas.yview)
         self._pipeline = tk.Frame(canvas)
@@ -153,8 +158,9 @@ class CommitteeGUI:
         # 右側:逐字串流對話
         right = tk.Frame(body)
         right.pack(side="left", fill="both", expand=True)
-        tk.Label(right, text="即時討論 Live debate", anchor="w",
-                 font=("Microsoft JhengHei", 10, "bold")).pack(fill="x")
+        self.debate_heading = tk.Label(right, text=ui["debate_heading"], anchor="w",
+                                       font=("Microsoft JhengHei", 10, "bold"))
+        self.debate_heading.pack(fill="x")
         self.feed = scrolledtext.ScrolledText(right, wrap="word", state="disabled",
                                               font=("Microsoft JhengHei", 10))
         self.feed.pack(fill="both", expand=True)
@@ -162,20 +168,23 @@ class CommitteeGUI:
             self.feed.tag_config(name, foreground=color)
 
     def _build_pipeline(self) -> None:
-        c = build_committee()
-        steps = [("phase:RESEARCH", "研究分析", "system", None, None)]
+        c = self.profile.committee
+        lbl = self.profile.labels
+        pn = lbl.phase_names
+        an = lbl.agent_names
+        steps = [("phase:RESEARCH", pn.get("RESEARCH", "RESEARCH"), "system", None, None)]
         for a in c.research:
-            steps.append(("agent:" + a.name, _zh(a.name), a.name, a.model, a.tool_names))
-        steps.append(("phase:CHALLENGE", "質詢", "system", None, None))
+            steps.append(("agent:" + a.name, an.get(a.name, a.name), a.name, a.model, a.tool_names))
+        steps.append(("phase:CHALLENGE", pn.get("CHALLENGE", "CHALLENGE"), "system", None, None))
         for a in c.challengers:
-            steps.append(("agent:" + a.name, _zh(a.name), a.name, a.model, a.tool_names))
-        steps.append(("phase:REBUTTAL", "答辯(分析師回應)", "system", None, None))
-        steps.append(("phase:VERDICT", "最終結論", "system", None, None))
-        steps.append(("agent:chair", _zh("chair"), "chair", c.chair.model, []))
+            steps.append(("agent:" + a.name, an.get(a.name, a.name), a.name, a.model, a.tool_names))
+        steps.append(("phase:REBUTTAL", pn.get("REBUTTAL", "REBUTTAL"), "system", None, None))
+        steps.append(("phase:VERDICT", pn.get("VERDICT", "VERDICT"), "system", None, None))
+        steps.append(("agent:chair", an.get("chair", "chair"), "chair", c.chair.model, []))
         if REFLECTION_PASSES > 0:
-            steps.append(("phase:REFLECT", "自我反省", "system", None, None))
-        steps.append(("phase:VERIFY", "自我查核", "system", None, None))
-        steps.append(("agent:verifier", _zh("verifier"), "verifier", c.verifier.model, []))
+            steps.append(("phase:REFLECT", pn.get("REFLECT", "REFLECT"), "system", None, None))
+        steps.append(("phase:VERIFY", pn.get("VERIFY", "VERIFY"), "system", None, None))
+        steps.append(("agent:verifier", an.get("verifier", "verifier"), "verifier", c.verifier.model, []))
 
         for i, (key, title, ck, model, tools) in enumerate(steps, start=1):
             self._make_card(i, key, title, ck, model, tools)
@@ -190,30 +199,51 @@ class CommitteeGUI:
         hdr.pack(fill="x")
         tk.Label(hdr, text="{}. {}".format(num, title), fg=color,
                  font=("Microsoft JhengHei", 9, "bold")).pack(side="left")
-        status = tk.Label(hdr, text=_PENDING[0], fg=_PENDING[1],
+        status = tk.Label(hdr, text=self.profile.ui["pending_badge"], fg=_PENDING[1],
                           font=("Microsoft JhengHei", 8))
         status.pack(side="right")
         if model:
-            tk.Label(card, text="模型: " + model, fg="#444444", anchor="w",
+            tk.Label(card, text=self.profile.ui["model_label"] + model, fg="#444444", anchor="w",
                      font=("Consolas", 7), wraplength=260, justify="left").pack(fill="x")
         if tools:
-            tk.Label(card, text="工具: " + ", ".join(tools), fg="#777777", anchor="w",
-                     font=("Microsoft JhengHei", 7), wraplength=260, justify="left").pack(fill="x")
+            tk.Label(card, text=self.profile.ui["tools_label"] + ", ".join(tools), fg="#777777",
+                     anchor="w", font=("Microsoft JhengHei", 7), wraplength=260,
+                     justify="left").pack(fill="x")
         result = tk.Label(card, text="—", fg="#333333", anchor="w",
                           font=("Microsoft JhengHei", 8), wraplength=260, justify="left")
         result.pack(fill="x")
         self.cards[key] = {"status": status, "result": result}
 
+    # ---- 市場切換 ----
+    def _on_market_change(self) -> None:
+        self.profile = get_profile(self.market_var.get())
+        ui = self.profile.ui
+        self.root.title(self.profile.ui["title"])
+        self.btn.config(text=ui["run_button"])
+        self.ticker_label.config(text=ui["ticker_label"])
+        self.verdict.config(text=ui["verdict_placeholder"])
+        self.status.config(text=ui["idle"])
+        self.pipeline_heading.config(text=ui["pipeline_heading"])
+        self.debate_heading.config(text=ui["debate_heading"])
+        cur = self.ticker.get().strip()
+        if not cur or cur in ("2330", "AAPL"):
+            self.ticker.delete(0, "end")
+            self.ticker.insert(0, ui["example_ticker"])
+        for w in self._pipeline.winfo_children():
+            w.destroy()
+        self.cards = {}
+        self._build_pipeline()
+
     # ---- 步驟方塊更新 ----
     def _card_running(self, key) -> None:
         c = self.cards.get(key)
         if c:
-            c["status"].config(text=_RUNNING[0], fg=_RUNNING[1])
+            c["status"].config(text=self.profile.ui["running_badge"], fg=_RUNNING[1])
 
     def _card_done(self, key, result: str = "") -> None:
         c = self.cards.get(key)
         if c:
-            c["status"].config(text=_DLDONE[0], fg=_DLDONE[1])
+            c["status"].config(text=self.profile.ui["done_badge"], fg=_DLDONE[1])
             if result:
                 c["result"].config(text=result)
 
@@ -224,21 +254,22 @@ class CommitteeGUI:
 
     def _reset_cards(self) -> None:
         for c in self.cards.values():
-            c["status"].config(text=_PENDING[0], fg=_PENDING[1])
+            c["status"].config(text=self.profile.ui["pending_badge"], fg=_PENDING[1])
             c["result"].config(text="—")
 
     # ---- 使用者操作 ----
     def _on_analyze(self) -> None:
         if self._busy:
             return
-        stock = self.ticker.get().strip() or "2330"
+        ui = self.profile.ui
+        stock = self.ticker.get().strip() or ui["example_ticker"]
         self._busy = True
         self._cur_agent = None
         self._cur_has_tokens = False
         self._cur_phase = None
-        self.btn.config(state="disabled", text="分析中...")
-        self.verdict.config(text="結論:分析 {} 中...".format(stock))
-        self._set_status("開始分析 {} ...".format(stock))
+        self.btn.config(state="disabled", text=ui["running_button"])
+        self.verdict.config(text=ui["verdict_running"].format(stock=stock))
+        self._set_status(ui["start_status"].format(stock=stock))
         self._reset_cards()
         self._clear_feed()
         threading.Thread(target=self._run_worker, args=(stock,), daemon=True).start()
@@ -252,7 +283,7 @@ class CommitteeGUI:
             bus.subscribe(collector)
             ledger = EvidenceLedger()
             llm = LLMClient(base_url=BASE_URL, api_key_env=API_KEY_ENV)
-            profile = get_profile(detect_market(stock))
+            profile = self.profile
             registry = build_registry(profile.client, profile.descriptions)
             t = profile.templates
             committee = profile.committee
@@ -289,72 +320,75 @@ class CommitteeGUI:
 
     def _handle(self, e: Event) -> None:
         et = e.type
+        ui = self.profile.ui
+        labels = self.profile.labels
+        an = labels.agent_names
         if et == _DONE:
             self._end_stream()
             if self._cur_phase:
                 self._card_done("phase:" + self._cur_phase)
             self._busy = False
-            self.btn.config(state="normal", text="開始分析")
-            self._set_status("● 閒置 — 已完成")
+            self.btn.config(state="normal", text=ui["run_button"])
+            self._set_status(ui["done_idle"])
             return
         if et == "report":
-            self._set_status("📄 報告已存: " + e.data.get("path", ""))
+            self._set_status(ui["report_saved"] + ": " + e.data.get("path", ""))
             return
         if et == "verdict":
-            head = verdict_headline(e.data.get("text", ""))
-            self.verdict.config(text="結論:" + head)
+            head = verdict_headline(e.data.get("text", ""), ui["recommend_word"], ui["done_word"])
+            self.verdict.config(text=ui["verdict_prefix"] + head)
             self._card_done("agent:chair", head)
-            self._set_status("結論完成 ✓")
+            self._set_status(ui["verdict_done"])
             return
         if et == "verification":
             g = e.data.get("grounding", {})
-            txt = "數據支持 {}/{}".format(g.get("supported", 0), g.get("checked", 0))
+            txt = "{} {}/{}".format(self.profile.ui["verify_prefix"], g.get("supported", 0), g.get("checked", 0))
             if not g.get("grounded", True):
-                txt += " ⚠ 未支持: " + ", ".join(str(x) for x in g.get("unsupported", []))
+                txt += " ⚠ " + self.profile.ui["unsupported_word"] + ": " + ", ".join(str(x) for x in g.get("unsupported", []))
             self._card_done("phase:VERIFY", txt)
-            self._set_status("查核:" + txt)
+            self._set_status(txt)
             return
         if et == "phase":
             ph = e.data.get("phase")
             if ph:
                 self._end_stream()
-                self._append(*format_event(e))
-                self._set_status("● {} — {}".format(PHASE_ZH.get(ph, ph), e.data.get("stock", "")))
+                self._append(*format_event(e, self.profile.labels, self.profile.ui))
+                self._set_status("● {} — {}".format(labels.phase_names.get(ph, ph), e.data.get("stock", "")))
                 if self._cur_phase and self._cur_phase != ph:
                     self._card_done("phase:" + self._cur_phase)
                 self._card_running("phase:" + ph)
                 self._cur_phase = ph
             elif e.data.get("status") == "start":
-                self._set_status("{}:思考中 ...".format(_zh(e.agent)))
+                self._set_status("{}:{} ...".format(an.get(e.agent, e.agent), ui["thinking"]))
                 self._card_running("agent:" + e.agent)
             return
         if et == "token":
             self._stream_token(e.agent, e.data.get("text", ""))
-            self._set_status("{}:撰寫中 ...".format(_zh(e.agent)))
+            self._set_status("{}:{} ...".format(an.get(e.agent, e.agent), ui["writing"]))
             return
         if et == "message":
             self._finish_message(e)
-            self._set_status("{}:完成".format(_zh(e.agent)))
+            self._set_status("{}:{}".format(an.get(e.agent, e.agent), ui["done_word"]))
             txt = e.data.get("text", "")
             if e.agent == "chair":
-                result = verdict_headline(txt)
+                result = verdict_headline(txt, ui["recommend_word"], ui["done_word"])
             elif e.agent == "verifier":
                 lines = txt.strip().splitlines()
-                result = (lines[0][:24] if lines else "完成")
+                result = (lines[0][:24] if lines else ui["done_word"])
             else:
-                result = detect_lean(txt)
+                result = detect_lean(txt, self.profile.ui["lean_words"], ui["done_word"])
             self._card_done("agent:" + e.agent, result)
             return
         if et in ("tool_call", "tool_result", "error"):
             self._end_stream()
-            formatted = format_event(e)
+            formatted = format_event(e, self.profile.labels, self.profile.ui)
             if formatted:
                 self._append(*formatted)
             if et == "tool_call":
-                self._set_status("{}:呼叫 {} ...".format(_zh(e.agent), e.data.get("tool")))
-                self._card_result("agent:" + e.agent, "呼叫 {} ...".format(e.data.get("tool")))
+                self._set_status("{}:{} {} ...".format(an.get(e.agent, e.agent), ui["calling"], e.data.get("tool")))
+                self._card_result("agent:" + e.agent, "{} {} ...".format(ui["calling"], e.data.get("tool")))
             elif et == "tool_result":
-                self._set_status("{}:已取得 {}".format(_zh(e.agent), e.data.get("tool")))
+                self._set_status("{}:{} {}".format(an.get(e.agent, e.agent), ui["received"], e.data.get("tool")))
             else:
                 self._set_status("⚠ {}:{}".format(e.data.get("tool"), e.data.get("error")))
 
@@ -362,7 +396,7 @@ class CommitteeGUI:
     def _stream_token(self, agent: str, text: str) -> None:
         if self._cur_agent != agent:
             self._end_stream()
-            self._append("[{}] ".format(_zh(agent)), agent)
+            self._append("[{}] ".format(self.profile.labels.agent_names.get(agent, agent)), agent)
             self._cur_agent = agent
             self._cur_has_tokens = False
         if text:
@@ -373,7 +407,7 @@ class CommitteeGUI:
         if self._cur_agent == e.agent and self._cur_has_tokens:
             self._append("\n", e.agent)
         else:
-            formatted = format_event(e)
+            formatted = format_event(e, self.profile.labels, self.profile.ui)
             if formatted:
                 self._append(*formatted)
         self._cur_agent = None

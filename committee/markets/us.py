@@ -147,3 +147,43 @@ def us_labels() -> ReportLabels:
                     "committee. All figures come from public sources (Yahoo Finance, SEC "
                     "EDGAR) and are for research and demonstration only — not investment "
                     "advice. Invest at your own risk."))
+
+
+def us_ui() -> dict:
+    return {
+        "title": "US Equity Investment Committee",
+        "subtitle": "Agentic AI (7 members + self-check)",
+        "ticker_label": "Ticker:",
+        "example_ticker": "AAPL",
+        "run_button": "Analyze",
+        "running_button": "Analyzing...",
+        "idle": "● Idle",
+        "done_idle": "● Idle — finished",
+        "pipeline_heading": "Pipeline",
+        "debate_heading": "Live Debate",
+        "verdict_placeholder": "Verdict: (run an analysis first)",
+        "verdict_prefix": "Verdict: ",
+        "verdict_running": "Verdict: analyzing {stock} ...",
+        "verdict_done": "Verdict ready ✓",
+        "start_status": "Analyzing {stock} ...",
+        "pending_badge": "⏳ waiting",
+        "running_badge": "▶ running",
+        "done_badge": "✓ done",
+        "thinking": "thinking",
+        "writing": "writing",
+        "calling": "calling",
+        "received": "received",
+        "model_label": "Model: ",
+        "tools_label": "Tools: ",
+        "tool_word": "tool",
+        "done_word": "done",
+        "warn_word": "warning",
+        "verify_prefix": "Self-check: figures supported",
+        "unsupported_word": "unsupported",
+        "report_saved": "📄 Report saved",
+        "open_report": "→ Open report",
+        "ws_error": "⚠ WebSocket error",
+        "load_failed": "Load failed: ",
+        "recommend_word": "Recommendation",
+        "lean_words": ["Bullish", "Bearish", "Neutral"],
+    }

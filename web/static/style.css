@@ -75,3 +75,6 @@ main {
 
 #report-link { display: inline-block; margin-left: 16px; color: #1f6feb;
   font-weight: normal; font-size: 0.9em; }
+
+.market-switch { display: inline-flex; gap: 8px; margin-right: 12px; }
+.market-switch label { cursor: pointer; font-weight: 600; }

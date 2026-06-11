@@ -1,6 +1,13 @@
 import os
 from typing import Any, Dict, Mapping
 
+from dotenv import load_dotenv
+
+# Load .env BEFORE resolving provider/model below. config is imported (often
+# transitively) before a front-end's own load_dotenv() runs, so without this the
+# env snapshot misses .env and silently falls back to the built-in defaults.
+load_dotenv()
+
 NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 

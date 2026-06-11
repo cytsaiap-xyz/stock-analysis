@@ -48,6 +48,10 @@ python main.py 2330      # Taiwan — report in 繁體中文, data from TWSE
 python main.py AAPL      # US — report in English, data from Yahoo Finance + SEC EDGAR
 ```
 
+The web app and desktop GUI also have a **TW / US switch** that sets the UI language
+(title, labels, live status) and forces the analyzed market — so a US run shows an
+English live debate, not just an English report.
+
 TW reports are written in Traditional Chinese; US reports in English. US fundamentals
 come from SEC EDGAR (XBRL company facts) and prices/ownership/quarterly revenue from
 Yahoo Finance (`yfinance`), with relative strength measured against the S&P 500. Two

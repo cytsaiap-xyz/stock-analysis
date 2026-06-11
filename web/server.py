@@ -25,21 +25,10 @@ from agentcore.evidence import EvidenceLedger
 from agentcore.llm import LLMClient
 from agentcore.orchestrator import Orchestrator
 from agentcore.report import ReportCollector
-from committee.agents import build_committee
 from committee.config import API_KEY_ENV, BASE_URL, REFLECTION_PASSES
 from committee.domain_tools import build_registry
-from committee.markets import detect_market, get_profile
+from committee.markets import get_profile
 from committee.report import save_report
-
-_AGENT_ZH = {
-    "fundamental": "基本面分析師", "technical": "技術面分析師",
-    "institutional": "籌碼面分析師", "news": "新聞輿情分析師",
-    "risk": "風險經理", "skeptic": "唱反調者",
-    "chair": "主席", "verifier": "查核員", "system": "系統",
-}
-_PHASE_ZH = {"RESEARCH": "研究分析", "CHALLENGE": "質詢",
-             "REBUTTAL": "答辯", "VERDICT": "最終結論",
-             "REFLECT": "自我反省", "VERIFY": "自我查核"}
 
 _STATIC = Path(__file__).parent / "static"
 _REPORTS = Path("reports")
@@ -47,7 +36,7 @@ _REPORTS.mkdir(exist_ok=True)
 
 load_dotenv()
 
-app = FastAPI(title="台股投資委員會")
+app = FastAPI(title="Agentic Investment Committee")
 app.mount("/static", StaticFiles(directory=str(_STATIC)), name="static")
 app.mount("/reports", StaticFiles(directory=str(_REPORTS)), name="reports")
 
@@ -62,30 +51,39 @@ def index() -> FileResponse:
     return FileResponse(_STATIC / "index.html")
 
 
+def _safe_market(market: str) -> str:
+    return market if market in ("tw", "us") else "tw"
+
+
 @app.get("/api/committee")
-def committee_info() -> Dict[str, Any]:
-    """Roster info for the front-end pipeline (names, ZH labels, models, tools)."""
-    c = build_committee()
+def committee_info(market: str = "tw") -> Dict[str, Any]:
+    """Roster + localized UI text for a market's pipeline view."""
+    profile = get_profile(_safe_market(market))
+    c = profile.committee
+    labels = profile.labels
+    names = labels.agent_names
 
     def info(a, group):
-        return {"name": a.name, "zh": _AGENT_ZH.get(a.name, a.name),
+        return {"name": a.name, "label": names.get(a.name, a.name),
                 "model": a.model, "tools": list(a.tool_names), "group": group}
 
     return {
+        "market": profile.market,
         "research": [info(a, "research") for a in c.research],
         "challengers": [info(a, "challengers") for a in c.challengers],
         "chair": info(c.chair, "chair"),
         "verifier": info(c.verifier, "verifier"),
-        "phase_zh": _PHASE_ZH,
-        "agent_zh": _AGENT_ZH,
+        "phase_names": labels.phase_names,
+        "agent_names": names,
         "reflection_passes": REFLECTION_PASSES,
+        "ui": profile.ui,
     }
 
 
 _DONE_SENTINEL = object()
 
 
-def _run_committee(stock_no: str, q: "queue.Queue",
+def _run_committee(stock_no: str, market: str, q: "queue.Queue",
                    collector: ReportCollector, ledger: EvidenceLedger) -> None:
     """Background worker: runs the committee, pushes events into the queue.
     Saves the HTML report on completion and pushes a final 'report' event."""
@@ -94,7 +92,7 @@ def _run_committee(stock_no: str, q: "queue.Queue",
         bus.subscribe(q.put)
         bus.subscribe(collector)
         llm = LLMClient(base_url=BASE_URL, api_key_env=API_KEY_ENV)
-        profile = get_profile(detect_market(stock_no))
+        profile = get_profile(_safe_market(market))
         registry = build_registry(profile.client, profile.descriptions)
         t = profile.templates
         committee = profile.committee
@@ -122,13 +120,13 @@ def _run_committee(stock_no: str, q: "queue.Queue",
         q.put(_DONE_SENTINEL)
 
 
-@app.websocket("/ws/run/{stock_no}")
-async def ws_run(ws: WebSocket, stock_no: str) -> None:
+@app.websocket("/ws/run/{market}/{stock_no}")
+async def ws_run(ws: WebSocket, market: str, stock_no: str) -> None:
     await ws.accept()
     q: "queue.Queue" = queue.Queue()
     collector = ReportCollector()
     ledger = EvidenceLedger()
-    threading.Thread(target=_run_committee, args=(stock_no, q, collector, ledger),
+    threading.Thread(target=_run_committee, args=(stock_no, market, q, collector, ledger),
                      daemon=True).start()
 
     try:

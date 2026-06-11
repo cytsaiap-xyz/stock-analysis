@@ -61,3 +61,50 @@ def test_error_renders_as_system():
                              data={"tool": "get_x", "error": "boom"}))
     text, tag = out
     assert tag == "system" and "boom" in text
+
+
+from committee.markets import get_profile
+
+
+def test_format_event_message_uses_market_labels():
+    from gui import format_event
+    us = get_profile("us").labels
+    out = format_event(Event(type="message", agent="fundamental", data={"text": "hi"}), us)
+    assert out == ("[Fundamentals Analyst] hi\n", "fundamental")
+
+
+def test_format_event_phase_uses_market_labels():
+    from gui import format_event
+    us = get_profile("us").labels
+    out = format_event(Event(type="phase", agent="system",
+                             data={"phase": "RESEARCH", "stock": "AAPL"}), us)
+    text, tag = out
+    assert "Research" in text and tag == "system"
+
+
+def test_format_event_defaults_to_tw_when_no_labels():
+    from gui import format_event
+    out = format_event(Event(type="message", agent="fundamental", data={"text": "hi"}))
+    assert out == ("[基本面分析師] hi\n", "fundamental")
+
+
+def test_detect_lean_uses_market_words():
+    from gui import detect_lean
+    assert detect_lean("Overall Bullish", ["Bullish", "Bearish", "Neutral"], "done") == "Bullish"
+    assert detect_lean("no stance here", ["Bullish", "Bearish", "Neutral"], "done") == "done"
+
+
+def test_verdict_headline_uses_market_recommend_word():
+    from gui import verdict_headline
+    text = "Recommendation: BUY\nConfidence: 60%"
+    assert verdict_headline(text, "Recommendation", "done") == "Recommendation: BUY"
+
+
+def test_format_event_tool_lines_use_market_ui():
+    from gui import format_event
+    from committee.markets import get_profile
+    p = get_profile("us")
+    out = format_event(Event(type="tool_call", agent="technical",
+                             data={"tool": "get_valuation", "args": {}}), p.labels, p.ui)
+    text, tag = out
+    assert "[tool]" in text and "get_valuation" in text and tag == "technical"
