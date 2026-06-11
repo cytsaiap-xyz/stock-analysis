@@ -184,3 +184,17 @@ def test_plain_message_without_thinking_has_no_details():
     html = build_html("AAPL", c, generated_at="2026-06-10 10:00:00")
     assert "Neutral stance" in html
     assert html.count('<details class="thinking">') == 0
+
+
+def test_report_renders_discussion_turns_and_grounding_flag():
+    from committee.report import build_html
+    from committee.markets import get_profile
+    c = ReportCollector()
+    c(Event(type="phase", agent="system", data={"phase": "DISCUSSION", "stock": "2330"}))
+    c(Event(type="message", agent="fundamental", data={"text": "估值合理,看多"}))
+    c(Event(type="grounding_flag", agent="fundamental", data={"unsupported": [30.52]}))
+    html = build_html("2330", c, generated_at="2026-06-10 10:00:00",
+                      labels=get_profile("tw").labels)
+    assert "討論交鋒" in html          # DISCUSSION phase label in the appendix
+    assert "估值合理,看多" in html
+    assert "未驗證數字" in html and "30.52" in html   # grounding flag rendered inline

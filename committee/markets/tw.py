@@ -81,6 +81,11 @@ def tw_templates() -> Templates:
             "查核發現以下數字未獲數據支持:{figures}。請重新修正對台股 {stock} 的建議,"
             "只使用有數據支持的數字,並維持原本的輸出格式。"
         ),
+        discussion=("你是【{role}】,只能從你這個專業角度,針對台股 {stock} 發言。\n"
+                    "其他委員剛才的重點:\n{others}\n"
+                    "你自己稍早的立場:{own}\n"
+                    "請用你自己的話,針對你不認同的點提出反駁或補充(一段話),"
+                    "切勿重複別人說過的字句。只引用工具回傳、有數據支持的數字,不得捏造。"),
     )
 
 
@@ -133,6 +138,7 @@ _TW_TEXT = {
     "row_mom": "月增率 (MoM)",
     "chart_caption": "收盤價 · MA20(虛線)", "chart_close": "收盤",
     "thinking_label": "思考過程",
+    "unverified_label": "未驗證數字",
 }
 
 
@@ -146,6 +152,7 @@ def tw_labels() -> ReportLabels:
                      "risk": "風險經理", "skeptic": "唱反調者", "chair": "主席",
                      "verifier": "查核員", "system": "系統"},
         phase_names={"RESEARCH": "研究分析", "CHALLENGE": "質詢", "REBUTTAL": "答辯",
+                     "DISCUSSION": "討論交鋒",
                      "VERDICT": "最終結論", "REFLECT": "自我反省", "VERIFY": "自我查核"},
         aspect_order=[("fundamental", "基本面分析"), ("technical", "技術面分析"),
                       ("institutional", "籌碼面分析"), ("news", "新聞輿情分析")],
@@ -193,6 +200,7 @@ def tw_ui() -> dict:
         "lean_words": ["看多", "看空", "中性"],
         "thinking_label": "思考過程",
         "others_label": "其他(自行輸入)",
+        "unverified_label": "未驗證數字",
     }
 
 

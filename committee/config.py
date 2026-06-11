@@ -83,3 +83,6 @@ CACHE_DIR = os.environ.get("CACHE_DIR", "cache")
 
 # Chair self-reflection passes before VERIFY (0 disables). Default on, env-overridable.
 REFLECTION_PASSES = int(os.environ.get("REFLECTION_PASSES", "1"))
+
+# Round-robin discussion rounds replacing scripted CHALLENGE+REBUTTAL (0 disables).
+DISCUSSION_ROUNDS = int(os.environ.get("DISCUSSION_ROUNDS", "2"))

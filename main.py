@@ -7,7 +7,7 @@ from agentcore.evidence import EvidenceLedger
 from agentcore.llm import LLMClient
 from agentcore.orchestrator import Orchestrator
 from agentcore.report import ReportCollector
-from committee.config import API_KEY_ENV, BASE_URL, REFLECTION_PASSES
+from committee.config import API_KEY_ENV, BASE_URL, DISCUSSION_ROUNDS, REFLECTION_PASSES
 from committee.domain_tools import build_registry
 from committee.markets import detect_market, get_profile
 from committee.report import save_report
@@ -62,6 +62,9 @@ def run(stock_no: str) -> str:
                         rebuttal_task_template=t.rebuttal,
                         reflect_task_template=t.reflect,
                         reflection_passes=REFLECTION_PASSES,
+                        discussion_rounds=DISCUSSION_ROUNDS,
+                        discussion_task_template=t.discussion,
+                        agent_labels=profile.labels.agent_names,
                         verify_task_template=t.verify,
                         correction_task_template=t.correction)
     verdict = orch.run(stock_no=stock_no, llm=llm, registry=registry,

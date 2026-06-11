@@ -79,6 +79,13 @@ def us_templates() -> Templates:
         correction=("Verification found these figures unsupported by data: {figures}. "
                     "Revise the recommendation on US stock {stock} using only "
                     "data-supported numbers, keeping the original output format."),
+        discussion=("You are the {role}. Speak only from your own area of expertise about "
+                    "US stock {stock}.\n"
+                    "What the other members just argued:\n{others}\n"
+                    "Your own earlier position: {own}\n"
+                    "In your own words, rebut or refine the points you disagree with, in one "
+                    "short paragraph. Do NOT repeat other members' wording. Cite only figures "
+                    "your tools returned; never invent numbers."),
     )
 
 
@@ -127,6 +134,7 @@ _US_TEXT = {
     "chart_caption": "Close · MA20 (dashed)", "chart_close": "Close",
     "row_foreign": "", "row_trust": "", "row_dealer": "", "row_total": "", "row_mom": "",
     "thinking_label": "Thinking",
+    "unverified_label": "unverified figure",
 }
 
 
@@ -140,6 +148,7 @@ def us_labels() -> ReportLabels:
                      "risk": "Risk Manager", "skeptic": "Skeptic", "chair": "Chair",
                      "verifier": "Verifier", "system": "System"},
         phase_names={"RESEARCH": "Research", "CHALLENGE": "Challenge", "REBUTTAL": "Rebuttal",
+                     "DISCUSSION": "Discussion",
                      "VERDICT": "Verdict", "REFLECT": "Reflect", "VERIFY": "Verify"},
         aspect_order=[("fundamental", "Fundamentals"), ("technical", "Technicals"),
                       ("institutional", "Ownership"), ("news", "News & Sentiment")],
@@ -189,6 +198,7 @@ def us_ui() -> dict:
         "lean_words": ["Bullish", "Bearish", "Neutral"],
         "thinking_label": "Thinking",
         "others_label": "Others (enter code)",
+        "unverified_label": "unverified figure",
     }
 
 

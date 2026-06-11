@@ -253,11 +253,12 @@ def _transcript(collector: ReportCollector, ledger: Any, labels: Any) -> str:
         if e.type == "phase" and e.data.get("phase"):
             cur = e.data["phase"]
             by_phase.setdefault(cur, [])
-        elif e.type in ("message", "tool_call", "tool_result", "error", "verdict"):
+        elif e.type in ("message", "tool_call", "tool_result", "error", "verdict",
+                        "grounding_flag"):
             by_phase.setdefault(cur, []).append((e.agent, e.type, e.data))
 
     p = ['<details class="appendix"><summary>附錄:完整辯論逐字稿與工具資料</summary>']
-    for ph in ("RESEARCH", "CHALLENGE", "REBUTTAL", "VERDICT", "REFLECT", "VERIFY"):
+    for ph in ("RESEARCH", "DISCUSSION", "CHALLENGE", "REBUTTAL", "VERDICT", "REFLECT", "VERIFY"):
         items = by_phase.get(ph) or []
         if not items:
             continue
@@ -279,6 +280,10 @@ def _transcript(collector: ReportCollector, ledger: Any, labels: Any) -> str:
             elif etype == "error":
                 p.append('<div class="err">[警告] {} 錯誤: {}</div>'.format(
                     _esc(data.get("tool")), _esc(data.get("error"))))
+            elif etype == "grounding_flag":
+                figs = ", ".join(str(x) for x in data.get("unsupported", []))
+                p.append('<div class="err">⚠ {}: {}</div>'.format(
+                    _esc(labels.text.get("unverified_label", "")), _esc(figs)))
 
     if ledger is not None and ledger.entries():
         p.append('<h3>工具呼叫資料(證據)</h3>')

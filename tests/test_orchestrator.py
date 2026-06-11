@@ -69,9 +69,11 @@ def test_research_analyst_gets_a_rebuttal_round():
 
 def test_default_templates_are_domain_neutral():
     from agentcore.orchestrator import (_DEFAULT_ANALYST_TASK, _DEFAULT_CHALLENGE_TASK,
-                                         _DEFAULT_REBUTTAL_TASK, _DEFAULT_REFLECT_TASK)
+                                         _DEFAULT_REBUTTAL_TASK, _DEFAULT_REFLECT_TASK,
+                                         _DEFAULT_DISCUSSION_TASK)
     for tmpl in (_DEFAULT_ANALYST_TASK, _DEFAULT_CHALLENGE_TASK,
-                 _DEFAULT_REBUTTAL_TASK, _DEFAULT_REFLECT_TASK):
+                 _DEFAULT_REBUTTAL_TASK, _DEFAULT_REFLECT_TASK,
+                 _DEFAULT_DISCUSSION_TASK):
         assert "Taiwan" not in tmpl and "{stock}" in tmpl
 
 
@@ -175,3 +177,76 @@ def test_verify_triggers_one_correction_when_ungrounded():
     assert len(chair.tasks) == 2               # verdict + one correction round
     verifs = [e for e in events if e.type == "verification"]
     assert len(verifs) == 2 and verifs[-1].data.get("final") is True
+
+
+def test_discussion_phase_replaces_challenge_rebuttal_when_enabled():
+    fund = _StubAgent("fundamental", "PE 合理。看多")
+    tech = _StubAgent("technical", "站上季線。看多")
+    risk = _StubAgent("risk", "波動偏高。")
+    skeptic = _StubAgent("skeptic", "別追高。")
+    chair = _StubAgent("chair", "建議: 持有\n信心: 60%")
+    orch = _orch([fund, tech], [risk, skeptic], chair, discussion_rounds=2)
+    bus, ledger = EventBus(), EvidenceLedger()
+    events = []
+    bus.subscribe(events.append)
+
+    orch.run(stock_no="2330", llm=None, registry=None, bus=bus, ledger=ledger)
+
+    phases = [e.data.get("phase") for e in events if e.type == "phase" and "phase" in e.data]
+    assert phases == ["RESEARCH", "DISCUSSION", "VERDICT"]
+    # research analysts: 1 RESEARCH turn + 2 discussion turns; challengers: 2 discussion turns
+    assert len(fund.tasks) == 3 and len(risk.tasks) == 2
+    # the Chair sees the discussion turns
+    assert "別追高" in chair.tasks[0]["task"]
+
+
+def test_discussion_turn_with_unsourced_figure_is_flagged():
+    fund = _StubAgent("fundamental", "PE 約 30.52,偏高")   # 30.52 not in the (empty) ledger
+    skeptic = _StubAgent("skeptic", "看空")                 # no figure -> no flag
+    chair = _StubAgent("chair", "建議: 賣出")
+    orch = _orch([fund], [skeptic], chair, discussion_rounds=1)
+    bus, ledger = EventBus(), EvidenceLedger()
+    events = []
+    bus.subscribe(events.append)
+
+    orch.run(stock_no="2330", llm=None, registry=None, bus=bus, ledger=ledger)
+
+    flags = [e for e in events if e.type == "grounding_flag"]
+    assert any(e.agent == "fundamental" and 30.52 in e.data["unsupported"] for e in flags)
+    assert not any(e.agent == "skeptic" for e in flags)
+
+
+def test_discussion_task_is_role_anchored_and_structured():
+    fund = _StubAgent("fundamental", "估值便宜,看多")
+    tech = _StubAgent("technical", "跌破均線,偏空")
+    risk = _StubAgent("risk", "波動高")
+    chair = _StubAgent("chair", "建議: 持有")
+    labels = {"fundamental": "基本面分析師", "technical": "技術面分析師", "risk": "風險經理"}
+    orch = _orch([fund, tech], [risk], chair, discussion_rounds=1, agent_labels=labels)
+    bus, ledger = EventBus(), EvidenceLedger()
+
+    orch.run(stock_no="2330", llm=None, registry=None, bus=bus, ledger=ledger)
+
+    # technical speaks 2nd in the round: its task names its own role, shows the OTHER
+    # members' latest points (attributed by role), and its own prior stance.
+    ttask = tech.tasks[-1]["task"]
+    assert "技術面分析師" in ttask                          # anchored to its own role
+    assert "基本面分析師" in ttask and "估值便宜" in ttask   # sees others' points, attributed
+    assert "跌破均線" in ttask                              # its own earlier stance fed back
+    # it is NOT handed the raw [name]-joined full transcript as separate context
+    assert tech.tasks[-1]["context"] == ""
+
+
+def test_discussion_disabled_by_default_keeps_challenge_rebuttal():
+    fund = _StubAgent("fundamental", "看多")
+    risk = _StubAgent("risk", "風險偏高。")
+    chair = _StubAgent("chair", "建議: 持有")
+    orch = _orch([fund], [risk], chair)   # discussion_rounds defaults to 0
+    bus, ledger = EventBus(), EvidenceLedger()
+    events = []
+    bus.subscribe(events.append)
+
+    orch.run(stock_no="2330", llm=None, registry=None, bus=bus, ledger=ledger)
+
+    phases = [e.data.get("phase") for e in events if e.type == "phase" and "phase" in e.data]
+    assert phases == ["RESEARCH", "CHALLENGE", "REBUTTAL", "VERDICT"]

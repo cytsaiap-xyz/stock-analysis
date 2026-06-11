@@ -7,13 +7,14 @@ from typing import Any, Dict, List, Tuple
 
 @dataclass
 class Templates:
-    """The six domain task templates injected into the (neutral) Orchestrator."""
+    """The seven domain task templates injected into the (neutral) Orchestrator."""
     analyst: str
     challenge: str
     rebuttal: str
     reflect: str
     verify: str
     correction: str
+    discussion: str                    # optional: replaces CHALLENGE+REBUTTAL when discussion_rounds > 0
 
 
 @dataclass

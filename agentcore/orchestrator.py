@@ -1,5 +1,5 @@
-from dataclasses import dataclass
-from typing import Any, List, Tuple
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Tuple
 
 from agentcore.events import Event
 from agentcore.verify import check_grounding
@@ -17,6 +17,14 @@ _DEFAULT_CHALLENGE_TASK = (
 _DEFAULT_REBUTTAL_TASK = (
     "The challengers raised the points above. In one paragraph, respond to those "
     "relevant to your expertise or revise your earlier view on {stock}."
+)
+_DEFAULT_DISCUSSION_TASK = (
+    "You are the {role}. Speak only from your own area of expertise about {stock}.\n"
+    "What the other members just argued:\n{others}\n"
+    "Your own earlier position: {own}\n"
+    "In your own words, rebut or refine the points you disagree with, in one short "
+    "paragraph. Do NOT repeat other members' wording. Cite only figures your tools "
+    "returned; never invent numbers."
 )
 _DEFAULT_REFLECT_TASK = (
     "Re-examine your own draft recommendation for {stock} shown above. Check whether "
@@ -39,10 +47,30 @@ def _join(items: List[Tuple[str, str]]) -> str:
     return "\n\n".join("[{}]\n{}".format(name, text) for name, text in items)
 
 
+def _latest_points(items: List[Tuple[str, str]], exclude: str, members: set) -> Dict[str, str]:
+    """Most recent turn text for each debate member except `exclude`."""
+    latest: Dict[str, str] = {}
+    for name, text in items:
+        if name in members and name != exclude:
+            latest[name] = text
+    return latest
+
+
+def _own_stance(items: List[Tuple[str, str]], name: str) -> str:
+    """The speaker's own most recent prior turn, or "" if it hasn't spoken yet."""
+    own = ""
+    for nm, text in items:
+        if nm == name:
+            own = text
+    return own
+
+
 @dataclass
 class Orchestrator:
-    """Runs a Chair-led, bounded debate: RESEARCH -> CHALLENGE -> REBUTTAL -> VERDICT
-    -> (optional REFLECT) -> (optional VERIFY).
+    """Runs a Chair-led, bounded debate. When discussion_rounds > 0 the flow is
+    RESEARCH -> DISCUSSION -> VERDICT -> (optional REFLECT) -> (optional VERIFY) --
+    DISCUSSION (a round-robin debate) replaces the scripted CHALLENGE/REBUTTAL;
+    otherwise the default RESEARCH -> CHALLENGE -> REBUTTAL -> VERDICT -> ... applies.
 
     Domain-agnostic: it only sequences groups of agents and passes prior statements
     forward as context. Task wording is injected via the templates.
@@ -53,6 +81,9 @@ class Orchestrator:
     analyst_task_template: str = _DEFAULT_ANALYST_TASK
     challenge_task_template: str = _DEFAULT_CHALLENGE_TASK
     rebuttal_task_template: str = _DEFAULT_REBUTTAL_TASK
+    discussion_rounds: int = 0          # 0 = off (scripted challenge/rebuttal); N = round-robin debate
+    discussion_task_template: str = _DEFAULT_DISCUSSION_TASK
+    agent_labels: Dict[str, str] = field(default_factory=dict)  # name -> display role (for prompts)
     reflect_task_template: str = _DEFAULT_REFLECT_TASK
     reflection_passes: int = 0          # 0 = off; Chair self-refines its draft N times
     verifier: Any = None
@@ -75,21 +106,49 @@ class Orchestrator:
             text = run_agent(a, self.analyst_task_template.format(stock=stock_no))
             transcript.append((a.name, text))
 
-        phase("CHALLENGE")
-        research_summary = _join(transcript)
-        challenger_names = set()
-        for c in self.challengers:
-            challenger_names.add(c.name)
-            text = run_agent(c, self.challenge_task_template.format(stock=stock_no),
-                             context=research_summary)
-            transcript.append((c.name, text))
+        if self.discussion_rounds > 0:
+            phase("DISCUSSION")
+            debaters = list(self.research) + list(self.challengers)
+            member_names = {d.name for d in debaters}
 
-        phase("REBUTTAL")
-        challenge_summary = _join([t for t in transcript if t[0] in challenger_names])
-        for a in self.research:
-            text = run_agent(a, self.rebuttal_task_template.format(stock=stock_no),
-                             context=challenge_summary)
-            transcript.append((a.name + " (答辯)", text))
+            def role_of(agent):
+                return self.agent_labels.get(agent.name, getattr(agent, "role", agent.name))
+
+            for _ in range(self.discussion_rounds):
+                for a in debaters:
+                    # Build a role-anchored, structured task instead of dumping the raw
+                    # transcript: each speaker sees the OTHER members' latest point
+                    # (attributed) plus its own prior stance, and is told to answer in its
+                    # own words. This prevents weaker models from echoing the previous turn.
+                    latest = _latest_points(transcript, a.name, member_names)
+                    others = "\n".join(
+                        "- {}: {}".format(role_of(d), latest[d.name])
+                        for d in debaters if d.name in latest)
+                    task = self.discussion_task_template.format(
+                        stock=stock_no, role=role_of(a), others=others,
+                        own=_own_stance(transcript, a.name))
+                    text = run_agent(a, task)
+                    transcript.append((a.name, text))
+                    g = check_grounding(text, ledger)
+                    if not g["grounded"]:
+                        bus.emit(Event(type="grounding_flag", agent=a.name,
+                                       data={"unsupported": g["unsupported"]}))
+        else:
+            phase("CHALLENGE")
+            research_summary = _join(transcript)
+            challenger_names = set()
+            for c in self.challengers:
+                challenger_names.add(c.name)
+                text = run_agent(c, self.challenge_task_template.format(stock=stock_no),
+                                 context=research_summary)
+                transcript.append((c.name, text))
+
+            phase("REBUTTAL")
+            challenge_summary = _join([t for t in transcript if t[0] in challenger_names])
+            for a in self.research:
+                text = run_agent(a, self.rebuttal_task_template.format(stock=stock_no),
+                                 context=challenge_summary)
+                transcript.append((a.name + " (答辯)", text))
 
         phase("VERDICT")
         chair_task = (
