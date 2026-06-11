@@ -1,11 +1,9 @@
 #!/usr/bin/env bash
-# Start the Agentic Investment Committee web app (FastAPI + WebSocket).
+# Start the Agentic Investment Committee web app (Django + Channels).
 #   ./start-web.sh                 -> http://127.0.0.1:8000
 #   HOST=0.0.0.0 PORT=9000 ./start-web.sh
-#   ./start-web.sh --reload        -> dev autoreload (extra args pass through to uvicorn)
 #
-# .env is loaded by web/server.py itself (load_dotenv), so the active LLM_PROVIDER
-# and model config are picked up automatically.
+# .env is loaded automatically; set LLM_PROVIDER + the matching API key first.
 set -euo pipefail
 
 # Run from the project root, wherever this script is invoked from.
@@ -25,4 +23,4 @@ if [ ! -f ".env" ]; then
 fi
 
 echo "▶  自主投資委員會 Web  →  http://${HOST}:${PORT}   (Ctrl+C 結束)"
-exec "$PY" -m uvicorn web.server:app --host "$HOST" --port "$PORT" "$@"
+exec "$PY" manage.py runserver "${HOST}:${PORT}"

@@ -190,3 +190,35 @@ def test_assembles_multiple_tool_calls_ordered_by_index():
     msg = client.chat(model="m", messages=[])
     assert [tc["name"] for tc in msg["tool_calls"]] == ["alpha", "beta"]
     assert [tc["id"] for tc in msg["tool_calls"]] == ["c0", "c1"]
+
+
+def test_assembles_indexless_tool_calls_as_separate_calls():
+    # Google/Gemini's OpenAI-compatible streaming sets index=None and delivers
+    # each tool call complete in one delta. They must NOT collapse into one slot
+    # (which would overwrite names and concatenate arguments into invalid JSON).
+    chunks = [
+        _delta_chunk(tool_calls=[_tc(None, id="g1", name="get_valuation",
+                                     arguments='{"stock_no":"AAPL"}')]),
+        _delta_chunk(tool_calls=[_tc(None, id="g2", name="get_financials",
+                                     arguments='{"stock_no":"AAPL"}')]),
+    ]
+    client = LLMClient(client=_FakeClient(chunks))
+    msg = client.chat(model="m", messages=[])
+    assert [tc["name"] for tc in msg["tool_calls"]] == ["get_valuation", "get_financials"]
+    assert [tc["arguments"] for tc in msg["tool_calls"]] == [
+        '{"stock_no":"AAPL"}', '{"stock_no":"AAPL"}']
+    assert [tc["id"] for tc in msg["tool_calls"]] == ["g1", "g2"]
+
+
+def test_assembles_indexless_fragmented_tool_call():
+    # An argument-only continuation (no name, index None) appends to the call in
+    # progress rather than starting a new one.
+    chunks = [
+        _delta_chunk(tool_calls=[_tc(None, id="g1", name="get_valuation",
+                                     arguments='{"sto')]),
+        _delta_chunk(tool_calls=[_tc(None, arguments='ck_no":"AAPL"}')]),
+    ]
+    client = LLMClient(client=_FakeClient(chunks))
+    msg = client.chat(model="m", messages=[])
+    assert msg["tool_calls"] == [
+        {"id": "g1", "name": "get_valuation", "arguments": '{"stock_no":"AAPL"}'}]
