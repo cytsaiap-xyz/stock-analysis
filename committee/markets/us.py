@@ -188,4 +188,34 @@ def us_ui() -> dict:
         "recommend_word": "Recommendation",
         "lean_words": ["Bullish", "Bearish", "Neutral"],
         "thinking_label": "Thinking",
+        "others_label": "Others (enter code)",
     }
+
+
+def us_stocklist() -> list:
+    def cat(label, *pairs):
+        return {"label": label, "items": [{"code": c, "name": n} for c, n in pairs]}
+    return [
+        cat("CPU", ("INTC", "Intel"), ("AMD", "AMD"), ("ARM", "Arm Holdings"),
+            ("QCOM", "Qualcomm")),
+        cat("GPU / AI Accelerators", ("NVDA", "NVIDIA"), ("AMD", "AMD"),
+            ("AVGO", "Broadcom"), ("MRVL", "Marvell")),
+        cat("Memory & Storage", ("MU", "Micron"), ("WDC", "Western Digital"),
+            ("STX", "Seagate"), ("SNDK", "SanDisk"), ("SIMO", "Silicon Motion")),
+        cat("Semiconductor Equipment", ("ASML", "ASML"), ("AMAT", "Applied Materials"),
+            ("LRCX", "Lam Research"), ("KLAC", "KLA"), ("TER", "Teradyne")),
+        cat("EDA", ("SNPS", "Synopsys"), ("CDNS", "Cadence")),
+        cat("Software (Enterprise & Security)", ("MSFT", "Microsoft"), ("ORCL", "Oracle"),
+            ("ADBE", "Adobe"), ("CRM", "Salesforce"), ("NOW", "ServiceNow"),
+            ("INTU", "Intuit"), ("PANW", "Palo Alto Networks"), ("CRWD", "CrowdStrike")),
+        cat("AI & Data Software", ("PLTR", "Palantir"), ("SNOW", "Snowflake"),
+            ("DDOG", "Datadog"), ("NET", "Cloudflare"), ("MDB", "MongoDB")),
+        cat("AI Infrastructure / Servers", ("SMCI", "Super Micro"), ("DELL", "Dell"),
+            ("HPE", "HPE"), ("ANET", "Arista"), ("VRT", "Vertiv")),
+        cat("Internet & Cloud", ("GOOGL", "Alphabet"), ("AMZN", "Amazon"),
+            ("META", "Meta"), ("NFLX", "Netflix"), ("UBER", "Uber")),
+        cat("Devices & Networking", ("AAPL", "Apple"), ("CSCO", "Cisco"),
+            ("MSI", "Motorola Solutions"), ("JNPR", "Juniper")),
+        cat("EV & Autonomous", ("TSLA", "Tesla"), ("RIVN", "Rivian"),
+            ("LCID", "Lucid"), ("MBLY", "Mobileye")),
+    ]

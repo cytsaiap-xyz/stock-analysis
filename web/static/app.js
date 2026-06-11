@@ -5,6 +5,7 @@
 
 const $ = (id) => document.getElementById(id);
 const tickerEl = $("ticker");
+const stockSelect = $("stock-select");
 const runBtn = $("run");
 const verdictEl = $("verdict");
 const verifyEl = $("verify");
@@ -41,6 +42,32 @@ function makeCard(parent, num, key, title, model, tools) {
     <div class="result">—</div>`;
   parent.appendChild(el);
   cards[key] = { statusEl: el.querySelector(".status"), resultEl: el.querySelector(".result") };
+}
+
+function buildStockList() {
+  stockSelect.innerHTML = "";
+  for (const catg of (roster.stocklist || [])) {
+    const og = document.createElement("optgroup");
+    og.label = catg.label;
+    for (const it of catg.items) {
+      const o = document.createElement("option");
+      o.value = it.code;
+      o.textContent = it.code + " " + it.name;
+      og.appendChild(o);
+    }
+    stockSelect.appendChild(og);
+  }
+  const other = document.createElement("option");
+  other.value = "__other__";
+  other.textContent = ui.others_label;
+  stockSelect.appendChild(other);
+  stockSelect.selectedIndex = 0;
+  tickerEl.classList.add("hidden");
+}
+
+function selectedStock() {
+  if (stockSelect.value === "__other__") return tickerEl.value.trim();
+  return stockSelect.value;
 }
 
 function buildPipeline() {
@@ -233,15 +260,13 @@ async function loadRoster() {
   roster = await r.json();
   ui = roster.ui;
   applyUi();
-  const others = ["2330", "AAPL"];
-  if (!tickerEl.value.trim() || others.includes(tickerEl.value.trim())) {
-    tickerEl.value = ui.example_ticker;
-  }
+  buildStockList();
   buildPipeline();
 }
 
 function start() {
-  const stock = (tickerEl.value || ui.example_ticker).trim();
+  const stock = selectedStock();
+  if (!stock) return;
   const m = market();
   if (ws && ws.readyState <= 1) { ws.close(); }
   resetCards();
@@ -259,6 +284,10 @@ function start() {
   ws.onerror = (err) => { setStatus(ui.ws_error); console.error(err); };
 }
 
+stockSelect.addEventListener("change", () => {
+  if (stockSelect.value === "__other__") { tickerEl.classList.remove("hidden"); tickerEl.focus(); }
+  else { tickerEl.classList.add("hidden"); }
+});
 runBtn.addEventListener("click", start);
 tickerEl.addEventListener("keydown", (e) => { if (e.key === "Enter") start(); });
 for (const r of document.querySelectorAll('input[name="market"]')) {

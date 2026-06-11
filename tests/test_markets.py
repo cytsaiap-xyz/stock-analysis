@@ -69,3 +69,46 @@ def test_profiles_carry_localized_ui_text():
     assert tw["thinking"] == "思考中" and us["thinking"] == "thinking"
     assert tw["lean_words"] == ["看多", "看空", "中性"]
     assert us["lean_words"] == ["Bullish", "Bearish", "Neutral"]
+
+
+def test_profiles_carry_stocklist():
+    from committee.markets import get_profile
+    for m in ("tw", "us"):
+        sl = get_profile(m).stocklist
+        assert isinstance(sl, list) and sl
+        for cat in sl:
+            assert cat["label"] and isinstance(cat["items"], list) and cat["items"]
+            for it in cat["items"]:
+                assert it["code"] and it["name"]
+
+
+def test_tw_stocklist_has_semiconductors_with_tsmc():
+    from committee.markets import get_profile
+    sl = get_profile("tw").stocklist
+    semi = next(c for c in sl if c["label"] == "半導體")
+    assert {"code": "2330", "name": "台積電"} in semi["items"]
+    for c in sl:
+        for it in c["items"]:
+            assert it["code"].isdigit() and 4 <= len(it["code"]) <= 6
+
+
+def test_us_stocklist_categories_and_placements():
+    from committee.markets import get_profile
+    sl = get_profile("us").stocklist
+    labels = [c["label"] for c in sl]
+    assert "CPU" in labels and "EDA" in labels and "EV & Autonomous" in labels
+    codes = {c["label"]: [it["code"] for it in c["items"]] for c in sl}
+    assert "SNPS" in codes["EDA"] and "CDNS" in codes["EDA"]
+    assert "SNDK" in codes["Memory & Storage"]
+    assert "SMCI" in codes["AI Infrastructure / Servers"]
+    assert "PLTR" in codes["AI & Data Software"]
+    assert "TSLA" in codes["EV & Autonomous"]
+    for c in sl:
+        for it in c["items"]:
+            assert it["code"].isalpha()
+
+
+def test_ui_has_others_label_both_markets():
+    from committee.markets import get_profile
+    assert get_profile("tw").ui["others_label"]
+    assert get_profile("us").ui["others_label"]

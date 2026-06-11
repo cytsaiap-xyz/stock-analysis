@@ -24,20 +24,24 @@ def build_tw_profile():
     from committee.agents import build_committee
     from committee.data.twse import TwseClient
     from committee.markets.base import MarketProfile
-    from committee.markets.tw import tw_prompts, tw_templates, tw_labels, tw_tool_descriptions, tw_ui
+    from committee.markets.tw import (tw_prompts, tw_templates, tw_labels,
+                                      tw_tool_descriptions, tw_ui, tw_stocklist)
     return MarketProfile(market="tw", lang="zh-TW", client=TwseClient(cache_dir=CACHE_DIR),
                          committee=build_committee(tw_prompts()), templates=tw_templates(),
-                         labels=tw_labels(), descriptions=tw_tool_descriptions(), ui=tw_ui())
+                         labels=tw_labels(), descriptions=tw_tool_descriptions(),
+                         ui=tw_ui(), stocklist=tw_stocklist())
 
 
 def build_us_profile():
     from committee.agents import build_committee
     from committee.data.us_market import UsClient
     from committee.markets.base import MarketProfile
-    from committee.markets.us import us_prompts, us_templates, us_labels, us_tool_descriptions, us_ui
+    from committee.markets.us import (us_prompts, us_templates, us_labels,
+                                      us_tool_descriptions, us_ui, us_stocklist)
     return MarketProfile(market="us", lang="en", client=UsClient(cache_dir=CACHE_DIR),
                          committee=build_committee(us_prompts()), templates=us_templates(),
-                         labels=us_labels(), descriptions=us_tool_descriptions(), ui=us_ui())
+                         labels=us_labels(), descriptions=us_tool_descriptions(),
+                         ui=us_ui(), stocklist=us_stocklist())
 
 
 def get_profile(market: str):
