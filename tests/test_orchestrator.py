@@ -305,3 +305,5 @@ def test_dynamic_mode_falls_back_to_roundrobin_on_failure(monkeypatch):
     assert phases == ["RESEARCH", "DISCUSSION", "VERDICT"]
     # fell back to round-robin: the research analyst took an extra (discussion) turn
     assert len(fund.tasks) == 2
+    warnings = [e for e in events if e.type == "message" and e.agent == "system"]
+    assert any("round-robin" in e.data["text"] for e in warnings)

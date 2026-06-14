@@ -120,7 +120,14 @@ class Orchestrator:
                         max_turns=self.discussion_max_turns, llm=llm, bus=bus,
                         ledger=ledger, model=getattr(self.chair, "model", None))
                     transcript.extend(turns)
-                except Exception as exc:   # import/construction/runtime failure
+                except Exception as exc:
+                    # NOTE (degraded mode): if run_dynamic_discussion raised mid-stream, some
+                    # message/grounding_flag events were already emitted to the bus (bridge_turn
+                    # runs per turn). The round-robin fallback below then emits a full set on top,
+                    # so subscribers/the report may show partial dynamic turns followed by all
+                    # round-robin turns, while the Chair (transcript-fed) sees only round-robin.
+                    # Accepted as a known degraded-mode artifact (see the spec's risk notes);
+                    # a future hardening would buffer dynamic turns and emit only on success.
                     bus.emit(Event(type="message", agent="system",
                                    data={"text": "dynamic discussion unavailable "
                                                  "({}); using round-robin".format(exc)}))
@@ -194,8 +201,9 @@ class Orchestrator:
                            data={"grounding": grounding, "final": True}))
         return verdict
 
-    def _discussion_roundrobin(self, debaters, stock_no, transcript, run_agent,
-                               bus, ledger) -> None:
+    def _discussion_roundrobin(self, debaters: List[Any], stock_no: str,
+                               transcript: List[Tuple[str, str]], run_agent: Any,
+                               bus: Any, ledger: Any) -> None:
         member_names = {d.name for d in debaters}
 
         def role_of(agent):
