@@ -92,6 +92,7 @@ speaker and the debate stops early on a `<CONSENSUS>` sentinel (bounded by
 
 | Env var | Default | Notes |
 |---|---|---|
+| `DISCUSSION_ROUNDS` | `2` | `0` disables the discussion phase; gates both modes (round-robin round count; in `dynamic` mode an on/off gate, turns set by `DISCUSSION_MAX_TURNS`) |
 | `DISCUSSION_MODE` | `roundrobin` | `roundrobin` (no extra deps) or `dynamic` |
 | `DISCUSSION_MAX_TURNS` | `12` | Max speaker turns before `dynamic` debate ends |
 

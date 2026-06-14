@@ -4,7 +4,7 @@ All AutoGen knowledge lives here. The pure helpers below import NO AutoGen, so t
 stay unit-testable and let the orchestrator import this module without the dependency
 installed; run_dynamic_discussion (a later task) imports AutoGen lazily inside its body.
 """
-from typing import Any, Callable, Dict, List, Sequence, Tuple
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 import re
 
 from agentcore.events import Event
@@ -122,7 +122,7 @@ def _kickoff(stock_no: str) -> str:
 
 def run_dynamic_discussion(debaters: List[Any], stock_no: str,
                            agent_labels: Dict[str, str], max_turns: int,
-                           llm: Any, bus: Any, ledger: Any, model: str
+                           llm: Any, bus: Any, ledger: Any, model: Optional[str]
                            ) -> List[Tuple[str, str]]:
     """Run the DISCUSSION phase as an AutoGen SelectorGroupChat. Bridges each produced
     turn onto the EventBus (message + grounding_flag) and returns [(name, text), ...]

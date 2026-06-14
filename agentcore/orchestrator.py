@@ -82,7 +82,7 @@ class Orchestrator:
     analyst_task_template: str = _DEFAULT_ANALYST_TASK
     challenge_task_template: str = _DEFAULT_CHALLENGE_TASK
     rebuttal_task_template: str = _DEFAULT_REBUTTAL_TASK
-    discussion_rounds: int = 0          # 0 = off (scripted challenge/rebuttal); N = round-robin debate
+    discussion_rounds: int = 0          # 0 = off; N = round-robin rounds (in dynamic mode, gate only; turns = discussion_max_turns)
     discussion_task_template: str = _DEFAULT_DISCUSSION_TASK
     discussion_mode: str = "roundrobin"   # "roundrobin" | "dynamic"
     discussion_max_turns: int = 12         # dynamic-mode hard cap

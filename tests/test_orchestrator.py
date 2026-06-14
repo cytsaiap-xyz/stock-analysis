@@ -281,6 +281,10 @@ def test_dynamic_mode_uses_run_dynamic_discussion(monkeypatch):
     phases = [e.data.get("phase") for e in events if e.type == "phase" and "phase" in e.data]
     assert phases == ["RESEARCH", "DISCUSSION", "VERDICT"]
     assert captured["max_turns"] == 8                 # field threaded through
+    assert captured["stock_no"] == "2330"
+    assert captured["bus"] is bus and captured["ledger"] is ledger
+    assert captured["debaters"] == [fund, risk]
+    assert captured["agent_labels"] == orch.agent_labels
     assert "動態發言A" in chair.tasks[0]["task"]        # Chair sees the dynamic turns
 
 

@@ -39,6 +39,15 @@ class TerminalRenderer:
             tail = "" if g.get("grounded", True) else " [warn] 未支持: {}".format(g.get("unsupported", []))
             print("\n  [查核] 數據支持 {}/{}{}".format(
                 g.get("supported", 0), g.get("checked", 0), tail))
+        elif e.type == "message":
+            # Dynamic-discussion turns arrive as one message (no token stream) -> print.
+            # Streamed turns already printed this agent's text via tokens -> skip to avoid dupes.
+            if self._streaming_agent == e.agent:
+                self._streaming_agent = None
+            elif e.data.get("text"):
+                print("\n[{}] {}".format(e.agent, e.data["text"]))
+        elif e.type == "grounding_flag":
+            print("\n  [warn] 未驗證數字: {}".format(e.data.get("unsupported", [])))
         elif e.type == "verdict":
             print("\n\n========== VERDICT ==========\n{}".format(e.data["text"]))
 

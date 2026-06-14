@@ -1,6 +1,6 @@
 openai>=2.0
-autogen-agentchat>=0.4
-autogen-ext[openai]
+autogen-agentchat>=0.4,<1.0
+autogen-ext[openai]>=0.4,<1.0
 requests>=2.31
 pandas>=2.0
 python-dotenv>=1.0
