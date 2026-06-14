@@ -3,6 +3,7 @@ from typing import Any, Dict, List, Tuple
 
 from agentcore.events import Event
 from agentcore.verify import check_grounding
+from agentcore import discussion_autogen
 
 # Domain-neutral defaults. "{stock}" is just a subject identifier; the core holds
 # no market/domain knowledge. Domains override these (see committee/agents.py).
@@ -111,30 +112,23 @@ class Orchestrator:
         if self.discussion_rounds > 0:
             phase("DISCUSSION")
             debaters = list(self.research) + list(self.challengers)
-            member_names = {d.name for d in debaters}
-
-            def role_of(agent):
-                return self.agent_labels.get(agent.name, getattr(agent, "role", agent.name))
-
-            for _ in range(self.discussion_rounds):
-                for a in debaters:
-                    # Build a role-anchored, structured task instead of dumping the raw
-                    # transcript: each speaker sees the OTHER members' latest point
-                    # (attributed) plus its own prior stance, and is told to answer in its
-                    # own words. This prevents weaker models from echoing the previous turn.
-                    latest = _latest_points(transcript, a.name, member_names)
-                    others = "\n".join(
-                        "- {}: {}".format(role_of(d), latest[d.name])
-                        for d in debaters if d.name in latest)
-                    task = self.discussion_task_template.format(
-                        stock=stock_no, role=role_of(a), others=others,
-                        own=_own_stance(transcript, a.name))
-                    text = run_agent(a, task)
-                    transcript.append((a.name, text))
-                    g = check_grounding(text, ledger)
-                    if not g["grounded"]:
-                        bus.emit(Event(type="grounding_flag", agent=a.name,
-                                       data={"unsupported": g["unsupported"]}))
+            if self.discussion_mode == "dynamic":
+                try:
+                    turns = discussion_autogen.run_dynamic_discussion(
+                        debaters=debaters, stock_no=stock_no,
+                        agent_labels=self.agent_labels,
+                        max_turns=self.discussion_max_turns, llm=llm, bus=bus,
+                        ledger=ledger, model=getattr(self.chair, "model", None))
+                    transcript.extend(turns)
+                except Exception as exc:   # import/construction/runtime failure
+                    bus.emit(Event(type="message", agent="system",
+                                   data={"text": "dynamic discussion unavailable "
+                                                 "({}); using round-robin".format(exc)}))
+                    self._discussion_roundrobin(debaters, stock_no, transcript,
+                                                run_agent, bus, ledger)
+            else:
+                self._discussion_roundrobin(debaters, stock_no, transcript,
+                                            run_agent, bus, ledger)
         else:
             phase("CHALLENGE")
             research_summary = _join(transcript)
@@ -199,3 +193,30 @@ class Orchestrator:
             bus.emit(Event(type="verification", agent=self.verifier.name,
                            data={"grounding": grounding, "final": True}))
         return verdict
+
+    def _discussion_roundrobin(self, debaters, stock_no, transcript, run_agent,
+                               bus, ledger) -> None:
+        member_names = {d.name for d in debaters}
+
+        def role_of(agent):
+            return self.agent_labels.get(agent.name, getattr(agent, "role", agent.name))
+
+        for _ in range(self.discussion_rounds):
+            for a in debaters:
+                # Build a role-anchored, structured task instead of dumping the raw
+                # transcript: each speaker sees the OTHER members' latest point
+                # (attributed) plus its own prior stance, and is told to answer in its
+                # own words. This prevents weaker models from echoing the previous turn.
+                latest = _latest_points(transcript, a.name, member_names)
+                others = "\n".join(
+                    "- {}: {}".format(role_of(d), latest[d.name])
+                    for d in debaters if d.name in latest)
+                task = self.discussion_task_template.format(
+                    stock=stock_no, role=role_of(a), others=others,
+                    own=_own_stance(transcript, a.name))
+                text = run_agent(a, task)
+                transcript.append((a.name, text))
+                g = check_grounding(text, ledger)
+                if not g["grounded"]:
+                    bus.emit(Event(type="grounding_flag", agent=a.name,
+                                   data={"unsupported": g["unsupported"]}))

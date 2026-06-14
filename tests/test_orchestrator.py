@@ -256,3 +256,52 @@ def test_orchestrator_discussion_mode_defaults_to_roundrobin():
     o = Orchestrator(research=[], challengers=[], chair=None)
     assert o.discussion_mode == "roundrobin"
     assert o.discussion_max_turns == 12
+
+
+def test_dynamic_mode_uses_run_dynamic_discussion(monkeypatch):
+    from agentcore import discussion_autogen
+    fund = _StubAgent("fundamental", "研究A")
+    risk = _StubAgent("risk", "研究B")
+    chair = _StubAgent("chair", "建議: 持有")
+    captured = {}
+
+    def fake_run(**kwargs):
+        captured.update(kwargs)
+        return [("fundamental", "動態發言A"), ("risk", "動態發言B")]
+
+    monkeypatch.setattr(discussion_autogen, "run_dynamic_discussion", fake_run)
+    orch = _orch([fund], [risk], chair, discussion_rounds=1,
+                 discussion_mode="dynamic", discussion_max_turns=8)
+    bus, ledger = EventBus(), EvidenceLedger()
+    events = []
+    bus.subscribe(events.append)
+
+    orch.run(stock_no="2330", llm=None, registry=None, bus=bus, ledger=ledger)
+
+    phases = [e.data.get("phase") for e in events if e.type == "phase" and "phase" in e.data]
+    assert phases == ["RESEARCH", "DISCUSSION", "VERDICT"]
+    assert captured["max_turns"] == 8                 # field threaded through
+    assert "動態發言A" in chair.tasks[0]["task"]        # Chair sees the dynamic turns
+
+
+def test_dynamic_mode_falls_back_to_roundrobin_on_failure(monkeypatch):
+    from agentcore import discussion_autogen
+
+    def boom(**kwargs):
+        raise RuntimeError("autogen unavailable")
+
+    monkeypatch.setattr(discussion_autogen, "run_dynamic_discussion", boom)
+    fund = _StubAgent("fundamental", "看多")
+    risk = _StubAgent("risk", "風險偏高")
+    chair = _StubAgent("chair", "建議: 持有")
+    orch = _orch([fund], [risk], chair, discussion_rounds=1, discussion_mode="dynamic")
+    bus, ledger = EventBus(), EvidenceLedger()
+    events = []
+    bus.subscribe(events.append)
+
+    orch.run(stock_no="2330", llm=None, registry=None, bus=bus, ledger=ledger)
+
+    phases = [e.data.get("phase") for e in events if e.type == "phase" and "phase" in e.data]
+    assert phases == ["RESEARCH", "DISCUSSION", "VERDICT"]
+    # fell back to round-robin: the research analyst took an extra (discussion) turn
+    assert len(fund.tasks) == 2
