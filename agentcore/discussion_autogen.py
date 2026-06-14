@@ -4,7 +4,8 @@ All AutoGen knowledge lives here. The pure helpers below import NO AutoGen, so t
 stay unit-testable and let the orchestrator import this module without the dependency
 installed; run_dynamic_discussion (a later task) imports AutoGen lazily inside its body.
 """
-from typing import Any, Callable, Dict, List, Sequence, Tuple
+from typing import Any, Callable, Dict, List, Sequence
+import re
 
 from agentcore.events import Event
 from agentcore.verify import check_grounding
@@ -41,9 +42,12 @@ def make_selector(names: List[str], roles: Dict[str, str], llm: Any,
     pick the next speaker; on ANY failure or an unrecognized name, falls back to the
     next round-robin speaker. Never returns None (so AutoGen never runs its own
     internal selector)."""
+    if not names:
+        raise ValueError("names must be non-empty")
     state = {"rr": 0}
     roster = "\n".join("- {} ({})".format(n, roles.get(n, n)) for n in names)
 
+    # rr counter is independent of LLM picks; the fallback resumes its own sequence.
     def _round_robin() -> str:
         nm = names[state["rr"] % len(names)]
         state["rr"] += 1
@@ -60,7 +64,7 @@ def make_selector(names: List[str], roles: Dict[str, str], llm: Any,
             reply = llm.chat(model=model, messages=[{"role": "user", "content": ask}])
             text = (reply.get("content") or "")
             for n in names:                      # first roster name mentioned wins
-                if n in text:
+                if re.search(r"\b{}\b".format(re.escape(n)), text, re.IGNORECASE):
                     return n
             return _round_robin()                # named nobody -> fallback
         except Exception:
