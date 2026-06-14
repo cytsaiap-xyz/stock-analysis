@@ -100,6 +100,20 @@ def _discussion_system(agent: Any, roles: Dict[str, str], stock_no: str) -> str:
     ).format(base, role, stock_no, CONSENSUS)
 
 
+def _run_coro(coro: Any) -> None:
+    """Run an async coroutine to completion from sync code, safely whether or not the
+    calling thread already has a running event loop."""
+    import asyncio
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        asyncio.run(coro)            # no loop in this thread (the normal case)
+        return
+    import concurrent.futures        # a loop is already running -> run in a side thread
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        pool.submit(asyncio.run, coro).result()
+
+
 def _kickoff(stock_no: str) -> str:
     return ("Begin the committee discussion on {}. Each member argues from its own "
             "perspective; reply {} when the committee has converged."
@@ -114,8 +128,6 @@ def run_dynamic_discussion(debaters: List[Any], stock_no: str,
     turn onto the EventBus (message + grounding_flag) and returns [(name, text), ...]
     to append to the synchronous transcript. Raises on import/construction failure so
     the orchestrator can fall back to round-robin."""
-    import asyncio
-
     from autogen_agentchat.agents import AssistantAgent
     from autogen_agentchat.teams import SelectorGroupChat
     from autogen_agentchat.conditions import (MaxMessageTermination,
@@ -139,20 +151,25 @@ def run_dynamic_discussion(debaters: List[Any], stock_no: str,
 
     termination = MaxMessageTermination(max_turns) | TextMentionTermination(CONSENSUS)
     selector = make_selector(names, roles, llm, model)
+    # selector_func always returns a name, so AutoGen never runs its own model-based
+    # selector (and allow_repeated_speaker, which only applies to that path, is moot).
     team = SelectorGroupChat(agents, model_client=client,
                              termination_condition=termination,
-                             selector_func=selector, allow_repeated_speaker=False)
+                             selector_func=selector)
 
     produced: List[Tuple[str, str]] = []
 
     async def _drive() -> None:
-        async for msg in team.run_stream(task=_kickoff(stock_no)):
-            src = getattr(msg, "source", None)
-            content = getattr(msg, "content", None)
-            if src in names and isinstance(content, str) and content.strip():
-                clean = bridge_turn(src, content, bus, ledger)
-                if clean:
-                    produced.append((src, clean))
+        try:
+            async for msg in team.run_stream(task=_kickoff(stock_no)):
+                src = getattr(msg, "source", None)
+                content = getattr(msg, "content", None)
+                if src in names and isinstance(content, str) and content.strip():
+                    clean = bridge_turn(src, content, bus, ledger)
+                    if clean:
+                        produced.append((src, clean))
+        finally:
+            await client.close()
 
-    asyncio.run(_drive())
+    _run_coro(_drive())
     return produced
