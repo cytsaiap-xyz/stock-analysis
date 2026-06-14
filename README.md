@@ -83,6 +83,21 @@ calls** — rating banner, key-data dashboard, per-aspect sections, risk box, an
 price chart (close + MA20), and a collapsible appendix with the full debate transcript
 and evidence table.
 
+### Discussion mode
+
+The debate phase runs round-robin by default. An opt-in `DISCUSSION_MODE=dynamic` instead
+runs it as a Microsoft AutoGen `SelectorGroupChat`, where a moderator LLM picks the next
+speaker and the debate stops early on a `<CONSENSUS>` sentinel (bounded by
+`DISCUSSION_MAX_TURNS`, default 12); it falls back to round-robin if AutoGen fails.
+
+| Env var | Default | Notes |
+|---|---|---|
+| `DISCUSSION_MODE` | `roundrobin` | `roundrobin` (no extra deps) or `dynamic` |
+| `DISCUSSION_MAX_TURNS` | `12` | Max speaker turns before `dynamic` debate ends |
+
+`dynamic` mode needs `pip install autogen-agentchat autogen-ext[openai]`; `roundrobin` is
+the default and requires no extra dependencies.
+
 ## Architecture
 
 Two strictly separated layers:
