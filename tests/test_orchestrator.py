@@ -250,3 +250,9 @@ def test_discussion_disabled_by_default_keeps_challenge_rebuttal():
 
     phases = [e.data.get("phase") for e in events if e.type == "phase" and "phase" in e.data]
     assert phases == ["RESEARCH", "CHALLENGE", "REBUTTAL", "VERDICT"]
+
+
+def test_orchestrator_discussion_mode_defaults_to_roundrobin():
+    o = Orchestrator(research=[], challengers=[], chair=None)
+    assert o.discussion_mode == "roundrobin"
+    assert o.discussion_max_turns == 12

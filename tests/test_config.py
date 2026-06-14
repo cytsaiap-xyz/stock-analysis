@@ -84,3 +84,29 @@ def test_discussion_rounds_default_and_override(monkeypatch):
     # restore committee.config to its default-env state for later tests.
     monkeypatch.delenv("DISCUSSION_ROUNDS", raising=False)
     importlib.reload(cfg)
+
+
+def test_discussion_mode_default_and_override(monkeypatch):
+    import importlib
+    import committee.config as cfg
+    monkeypatch.delenv("DISCUSSION_MODE", raising=False)
+    importlib.reload(cfg)
+    assert cfg.DISCUSSION_MODE == "roundrobin"
+    monkeypatch.setenv("DISCUSSION_MODE", "dynamic")
+    importlib.reload(cfg)
+    assert cfg.DISCUSSION_MODE == "dynamic"
+    monkeypatch.delenv("DISCUSSION_MODE", raising=False)
+    importlib.reload(cfg)          # restore module to default for later tests
+
+
+def test_discussion_max_turns_default_and_override(monkeypatch):
+    import importlib
+    import committee.config as cfg
+    monkeypatch.delenv("DISCUSSION_MAX_TURNS", raising=False)
+    importlib.reload(cfg)
+    assert cfg.DISCUSSION_MAX_TURNS == 12
+    monkeypatch.setenv("DISCUSSION_MAX_TURNS", "6")
+    importlib.reload(cfg)
+    assert cfg.DISCUSSION_MAX_TURNS == 6
+    monkeypatch.delenv("DISCUSSION_MAX_TURNS", raising=False)
+    importlib.reload(cfg)

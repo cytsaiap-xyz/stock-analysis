@@ -86,3 +86,8 @@ REFLECTION_PASSES = int(os.environ.get("REFLECTION_PASSES", "1"))
 
 # Round-robin discussion rounds replacing scripted CHALLENGE+REBUTTAL (0 disables).
 DISCUSSION_ROUNDS = int(os.environ.get("DISCUSSION_ROUNDS", "2"))
+
+# Discussion engine: "roundrobin" (sequential, default) or "dynamic" (AutoGen SelectorGroupChat).
+DISCUSSION_MODE = os.environ.get("DISCUSSION_MODE", "roundrobin")
+# Hard cap on dynamic-mode turns (selector may end earlier on consensus).
+DISCUSSION_MAX_TURNS = int(os.environ.get("DISCUSSION_MAX_TURNS", "12"))

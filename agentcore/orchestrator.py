@@ -84,6 +84,8 @@ class Orchestrator:
     discussion_rounds: int = 0          # 0 = off (scripted challenge/rebuttal); N = round-robin debate
     discussion_task_template: str = _DEFAULT_DISCUSSION_TASK
     agent_labels: Dict[str, str] = field(default_factory=dict)  # name -> display role (for prompts)
+    discussion_mode: str = "roundrobin"   # "roundrobin" | "dynamic"
+    discussion_max_turns: int = 12         # dynamic-mode hard cap
     reflect_task_template: str = _DEFAULT_REFLECT_TASK
     reflection_passes: int = 0          # 0 = off; Chair self-refines its draft N times
     verifier: Any = None
