@@ -4,7 +4,7 @@ All AutoGen knowledge lives here. The pure helpers below import NO AutoGen, so t
 stay unit-testable and let the orchestrator import this module without the dependency
 installed; run_dynamic_discussion (a later task) imports AutoGen lazily inside its body.
 """
-from typing import Any, Callable, Dict, List, Sequence
+from typing import Any, Callable, Dict, List, Sequence, Tuple
 import re
 
 from agentcore.events import Event
@@ -84,3 +84,75 @@ def bridge_turn(name: str, text: str, bus: Any, ledger: Any) -> str:
         bus.emit(Event(type="grounding_flag", agent=name,
                        data={"unsupported": g["unsupported"]}))
     return clean
+
+
+def _discussion_system(agent: Any, roles: Dict[str, str], stock_no: str) -> str:
+    """Per-agent system message: its persona + role anchor + the consensus rule."""
+    role = roles.get(agent.name, getattr(agent, "role", agent.name))
+    base = getattr(agent, "system_prompt", "")
+    return (
+        "{}\n\n"
+        "You are the {}. In this committee debate about {}, speak ONLY from your own "
+        "area of expertise, in one short paragraph, in your own words — do not repeat "
+        "other members' wording, and cite only figures already established by the data. "
+        "If you believe the committee has converged and you have nothing new to add, "
+        "reply with exactly {} and nothing else."
+    ).format(base, role, stock_no, CONSENSUS)
+
+
+def _kickoff(stock_no: str) -> str:
+    return ("Begin the committee discussion on {}. Each member argues from its own "
+            "perspective; reply {} when the committee has converged."
+            ).format(stock_no, CONSENSUS)
+
+
+def run_dynamic_discussion(debaters: List[Any], stock_no: str,
+                           agent_labels: Dict[str, str], max_turns: int,
+                           llm: Any, bus: Any, ledger: Any, model: str
+                           ) -> List[Tuple[str, str]]:
+    """Run the DISCUSSION phase as an AutoGen SelectorGroupChat. Bridges each produced
+    turn onto the EventBus (message + grounding_flag) and returns [(name, text), ...]
+    to append to the synchronous transcript. Raises on import/construction failure so
+    the orchestrator can fall back to round-robin."""
+    import asyncio
+
+    from autogen_agentchat.agents import AssistantAgent
+    from autogen_agentchat.teams import SelectorGroupChat
+    from autogen_agentchat.conditions import (MaxMessageTermination,
+                                              TextMentionTermination)
+    from autogen_ext.models.openai import OpenAIChatCompletionClient
+    from autogen_core.models import ModelInfo
+
+    names = [d.name for d in debaters]
+    roles = {d.name: agent_labels.get(d.name, getattr(d, "role", d.name))
+             for d in debaters}
+
+    client = OpenAIChatCompletionClient(
+        model=model, base_url=getattr(llm, "base_url", None),
+        api_key=getattr(llm, "api_key", None),
+        model_info=ModelInfo(vision=False, function_calling=False, json_output=False,
+                             family="unknown", structured_output=False))
+
+    agents = [AssistantAgent(name=d.name, model_client=client,
+                             system_message=_discussion_system(d, roles, stock_no))
+              for d in debaters]
+
+    termination = MaxMessageTermination(max_turns) | TextMentionTermination(CONSENSUS)
+    selector = make_selector(names, roles, llm, model)
+    team = SelectorGroupChat(agents, model_client=client,
+                             termination_condition=termination,
+                             selector_func=selector, allow_repeated_speaker=False)
+
+    produced: List[Tuple[str, str]] = []
+
+    async def _drive() -> None:
+        async for msg in team.run_stream(task=_kickoff(stock_no)):
+            src = getattr(msg, "source", None)
+            content = getattr(msg, "content", None)
+            if src in names and isinstance(content, str) and content.strip():
+                clean = bridge_turn(src, content, bus, ledger)
+                if clean:
+                    produced.append((src, clean))
+
+    asyncio.run(_drive())
+    return produced

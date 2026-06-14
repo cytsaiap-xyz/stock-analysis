@@ -1,3 +1,7 @@
+import os
+
+import pytest
+
 from agentcore.discussion_autogen import (make_selector, bridge_turn,
                                            strip_consensus, is_consensus,
                                            _format_messages)
@@ -86,3 +90,27 @@ def test_bridge_turn_grounded_text_has_no_flag():
     bus.subscribe(events.append)
     bridge_turn("technical", "維持看多,無新數字", bus, ledger)
     assert not [e for e in events if e.type == "grounding_flag"]
+
+
+@pytest.mark.live
+def test_dynamic_discussion_live_smoke():
+    """Real AutoGen team run against the configured endpoint. Needs network + key."""
+    from agentcore.discussion_autogen import run_dynamic_discussion
+    from agentcore.events import EventBus
+    from agentcore.evidence import EvidenceLedger
+    from agentcore.llm import LLMClient
+    from committee.config import BASE_URL, API_KEY_ENV, MODEL_REASONER
+    from committee.agents import build_committee
+    from committee.markets.tw import tw_prompts
+
+    if not os.environ.get(API_KEY_ENV):
+        pytest.skip("{} not set".format(API_KEY_ENV))
+    llm = LLMClient(base_url=BASE_URL, api_key_env=API_KEY_ENV)
+    c = build_committee(tw_prompts())
+    bus, ledger = EventBus(), EvidenceLedger()
+    turns = run_dynamic_discussion(
+        debaters=list(c.research) + list(c.challengers), stock_no="2330",
+        agent_labels={}, max_turns=6, llm=llm, bus=bus, ledger=ledger,
+        model=MODEL_REASONER)
+    assert isinstance(turns, list) and turns
+    assert all(isinstance(t, tuple) and len(t) == 2 for t in turns)

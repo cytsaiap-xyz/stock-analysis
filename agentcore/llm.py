@@ -36,12 +36,16 @@ class LLMClient:
     ) -> None:
         if client is not None:
             self._client = client
+            self.base_url = base_url
+            self.api_key = None
             return
         key = api_key or os.environ.get(api_key_env)
         if not key:
             raise RuntimeError("{} is not set".format(api_key_env))
         from openai import OpenAI
 
+        self.base_url = base_url
+        self.api_key = key
         self._client = OpenAI(base_url=base_url, api_key=key)
 
     def chat(
