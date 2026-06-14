@@ -69,6 +69,11 @@ Anything market-specific (the word "Taiwan", agent names, tool function bodies) 
 in `committee/`. If you find domain language leaking into `agentcore/`, it's a bug —
 `tests/test_orchestrator.py::test_default_templates_are_domain_neutral` enforces this.
 
+`agentcore/discussion_autogen.py` is the single, isolated home of the optional Microsoft
+AutoGen dependency (imported lazily, only when `DISCUSSION_MODE=dynamic` is selected) — so
+the "no framework" rule still holds for the rest of `agentcore/`, which stays import-clean
+and dependency-free.
+
 ### There is a second, JS-orchestrated analysis path (the Workflow skill)
 
 Besides the Python committee engine, `.claude/workflows/tw_stock_analyzed_workflow.js` is a
@@ -120,6 +125,14 @@ for N rounds in place of the scripted challenge/rebuttal turns. Each debate turn
 deterministically grounding-checked, and unsourced figures raise a `grounding_flag` event
 (`{agent, data:{unsupported:[floats]}}`) shown inline in all three front-ends + the report.
 The domain layer injects a per-market `discussion_task_template` like the other templates.
+A `DISCUSSION_MODE=dynamic` variant runs the phase as a Microsoft AutoGen `SelectorGroupChat` — a
+moderator LLM picks the next speaker and the debate stops early on a `<CONSENSUS>` sentinel, bounded
+by `DISCUSSION_MAX_TURNS` (default 12). It is opt-in (`roundrobin` is the default), confined to
+`agentcore/discussion_autogen.py` (AutoGen imported lazily, so the rest of the engine and the import
+graph stay framework-free), and falls back to round-robin if AutoGen fails. Discussion agents are
+tool-free in this mode (they argue over the evidence RESEARCH already collected).
+Env: `DISCUSSION_MODE` (`roundrobin` default | `dynamic`) and `DISCUSSION_MAX_TURNS` (default 12);
+`dynamic` requires `pip install autogen-agentchat autogen-ext[openai]`.
 
 ### VERIFY is two-part, by design
 

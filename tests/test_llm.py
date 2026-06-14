@@ -64,6 +64,24 @@ def test_passes_tools_and_tool_choice_when_tools_given():
     assert kwargs["tools"] == tools
 
 
+def test_max_tokens_omitted_when_unset():
+    client = LLMClient(client=_FakeClient([_delta_chunk(content="x")]))
+    client.chat(model="m", messages=[])
+    assert "max_tokens" not in client._client.chat.completions.last_kwargs
+
+
+def test_client_default_max_tokens_is_sent():
+    client = LLMClient(client=_FakeClient([_delta_chunk(content="x")]), max_tokens=32000)
+    client.chat(model="m", messages=[])
+    assert client._client.chat.completions.last_kwargs["max_tokens"] == 32000
+
+
+def test_per_call_max_tokens_overrides_client_default():
+    client = LLMClient(client=_FakeClient([_delta_chunk(content="x")]), max_tokens=32000)
+    client.chat(model="m", messages=[], max_tokens=100)
+    assert client._client.chat.completions.last_kwargs["max_tokens"] == 100
+
+
 class _ModelRoutedCompletions:
     """Raises a status error for models listed in `fail`; streams for the rest."""
     def __init__(self, fail, status=429):

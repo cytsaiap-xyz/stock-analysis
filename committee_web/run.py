@@ -5,7 +5,7 @@ from django.conf import settings
 from agentcore.events import Event, EventBus
 from agentcore.llm import LLMClient
 from agentcore.orchestrator import Orchestrator
-from committee.config import API_KEY_ENV, BASE_URL, DISCUSSION_ROUNDS, REFLECTION_PASSES
+from committee.config import API_KEY_ENV, BASE_URL, DISCUSSION_MAX_TURNS, DISCUSSION_MODE, DISCUSSION_ROUNDS, MAX_OUTPUT_TOKENS, REFLECTION_PASSES
 from committee.domain_tools import build_registry
 from committee.markets import get_profile
 from committee.report import save_report
@@ -29,7 +29,7 @@ def run_committee(stock_no, market, q, collector, ledger) -> None:
         bus = EventBus()
         bus.subscribe(q.put)
         bus.subscribe(collector)
-        llm = LLMClient(base_url=BASE_URL, api_key_env=API_KEY_ENV)
+        llm = LLMClient(base_url=BASE_URL, api_key_env=API_KEY_ENV, max_tokens=MAX_OUTPUT_TOKENS)
         profile = get_profile(safe_market(market))
         registry = build_registry(profile.client, profile.descriptions)
         t = profile.templates
@@ -44,6 +44,8 @@ def run_committee(stock_no, market, q, collector, ledger) -> None:
                             discussion_rounds=DISCUSSION_ROUNDS,
                             discussion_task_template=t.discussion,
                             agent_labels=profile.labels.agent_names,
+                            discussion_mode=DISCUSSION_MODE,
+                            discussion_max_turns=DISCUSSION_MAX_TURNS,
                             verify_task_template=t.verify,
                             correction_task_template=t.correction)
         orch.run(stock_no=stock_no, llm=llm, registry=registry, bus=bus, ledger=ledger)

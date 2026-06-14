@@ -33,15 +33,23 @@ class LLMClient:
         base_url: str = "https://integrate.api.nvidia.com/v1",
         client: Any = None,
         api_key_env: str = "NVIDIA_API_KEY",
+        max_tokens: Optional[int] = None,
     ) -> None:
+        # Default output-token ceiling for every chat() call (None = let the endpoint
+        # apply the model's own max). Capped by the model's real max output regardless.
+        self.max_tokens = max_tokens
         if client is not None:
             self._client = client
+            self.base_url = base_url
+            self.api_key = None
             return
         key = api_key or os.environ.get(api_key_env)
         if not key:
             raise RuntimeError("{} is not set".format(api_key_env))
         from openai import OpenAI
 
+        self.base_url = base_url
+        self.api_key = key
         self._client = OpenAI(base_url=base_url, api_key=key)
 
     def chat(
@@ -56,15 +64,16 @@ class LLMClient:
         backoff: float = 1.0,
         fallback_models: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
-        # max_tokens left unset (None) => let the endpoint apply the model's own default
-        # output limit (e.g. Gemma's 8K), instead of truncating responses at a fixed cap.
+        # Per-call max_tokens wins; else fall back to the client default (self.max_tokens);
+        # if both are None, omit it so the endpoint applies the model's own output limit.
+        effective_max = max_tokens if max_tokens is not None else self.max_tokens
         kwargs: Dict[str, Any] = dict(
             messages=messages,
             temperature=temperature,
             stream=True,
         )
-        if max_tokens is not None:
-            kwargs["max_tokens"] = max_tokens
+        if effective_max is not None:
+            kwargs["max_tokens"] = effective_max
         if tools:
             kwargs["tools"] = tools
             kwargs["tool_choice"] = "auto"

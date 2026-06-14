@@ -7,7 +7,7 @@ from agentcore.evidence import EvidenceLedger
 from agentcore.llm import LLMClient
 from agentcore.orchestrator import Orchestrator
 from agentcore.report import ReportCollector
-from committee.config import API_KEY_ENV, BASE_URL, DISCUSSION_ROUNDS, REFLECTION_PASSES
+from committee.config import API_KEY_ENV, BASE_URL, DISCUSSION_MAX_TURNS, DISCUSSION_MODE, DISCUSSION_ROUNDS, MAX_OUTPUT_TOKENS, REFLECTION_PASSES
 from committee.domain_tools import build_registry
 from committee.markets import detect_market, get_profile
 from committee.report import save_report
@@ -39,6 +39,15 @@ class TerminalRenderer:
             tail = "" if g.get("grounded", True) else " [warn] 未支持: {}".format(g.get("unsupported", []))
             print("\n  [查核] 數據支持 {}/{}{}".format(
                 g.get("supported", 0), g.get("checked", 0), tail))
+        elif e.type == "message":
+            # Dynamic-discussion turns arrive as one message (no token stream) -> print.
+            # Streamed turns already printed this agent's text via tokens -> skip to avoid dupes.
+            if self._streaming_agent == e.agent:
+                self._streaming_agent = None
+            elif e.data.get("text"):
+                print("\n[{}] {}".format(e.agent, e.data["text"]))
+        elif e.type == "grounding_flag":
+            print("\n  [warn] 未驗證數字: {}".format(e.data.get("unsupported", [])))
         elif e.type == "verdict":
             print("\n\n========== VERDICT ==========\n{}".format(e.data["text"]))
 
@@ -49,7 +58,7 @@ def run(stock_no: str) -> str:
     collector = ReportCollector()
     bus.subscribe(collector)
     ledger = EvidenceLedger()
-    llm = LLMClient(base_url=BASE_URL, api_key_env=API_KEY_ENV)
+    llm = LLMClient(base_url=BASE_URL, api_key_env=API_KEY_ENV, max_tokens=MAX_OUTPUT_TOKENS)
 
     profile = get_profile(detect_market(stock_no))
     registry = build_registry(profile.client, profile.descriptions)
@@ -65,6 +74,8 @@ def run(stock_no: str) -> str:
                         discussion_rounds=DISCUSSION_ROUNDS,
                         discussion_task_template=t.discussion,
                         agent_labels=profile.labels.agent_names,
+                        discussion_mode=DISCUSSION_MODE,
+                        discussion_max_turns=DISCUSSION_MAX_TURNS,
                         verify_task_template=t.verify,
                         correction_task_template=t.correction)
     verdict = orch.run(stock_no=stock_no, llm=llm, registry=registry,
