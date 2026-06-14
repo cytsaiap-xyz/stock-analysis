@@ -139,11 +139,15 @@ def run_dynamic_discussion(debaters: List[Any], stock_no: str,
     roles = {d.name: agent_labels.get(d.name, getattr(d, "role", d.name))
              for d in debaters}
 
-    client = OpenAIChatCompletionClient(
+    client_kwargs = dict(
         model=model, base_url=getattr(llm, "base_url", None),
         api_key=getattr(llm, "api_key", None),
         model_info=ModelInfo(vision=False, function_calling=False, json_output=False,
                              family="unknown", structured_output=False))
+    max_tokens = getattr(llm, "max_tokens", None)   # honor the same output ceiling
+    if max_tokens is not None:
+        client_kwargs["max_tokens"] = max_tokens
+    client = OpenAIChatCompletionClient(**client_kwargs)
 
     agents = [AssistantAgent(name=d.name, model_client=client,
                              system_message=_discussion_system(d, roles, stock_no))

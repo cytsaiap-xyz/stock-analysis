@@ -7,7 +7,7 @@ from agentcore.evidence import EvidenceLedger
 from agentcore.llm import LLMClient
 from agentcore.orchestrator import Orchestrator
 from agentcore.report import ReportCollector
-from committee.config import API_KEY_ENV, BASE_URL, DISCUSSION_MAX_TURNS, DISCUSSION_MODE, DISCUSSION_ROUNDS, REFLECTION_PASSES
+from committee.config import API_KEY_ENV, BASE_URL, DISCUSSION_MAX_TURNS, DISCUSSION_MODE, DISCUSSION_ROUNDS, MAX_OUTPUT_TOKENS, REFLECTION_PASSES
 from committee.domain_tools import build_registry
 from committee.markets import detect_market, get_profile
 from committee.report import save_report
@@ -58,7 +58,7 @@ def run(stock_no: str) -> str:
     collector = ReportCollector()
     bus.subscribe(collector)
     ledger = EvidenceLedger()
-    llm = LLMClient(base_url=BASE_URL, api_key_env=API_KEY_ENV)
+    llm = LLMClient(base_url=BASE_URL, api_key_env=API_KEY_ENV, max_tokens=MAX_OUTPUT_TOKENS)
 
     profile = get_profile(detect_market(stock_no))
     registry = build_registry(profile.client, profile.descriptions)
